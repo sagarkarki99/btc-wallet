@@ -11,6 +11,8 @@ require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/holiman/uint256 v1.3.1 // indirect
+	github.com/jmoiron/sqlx v1.4.0 // indirect
+	github.com/lib/pq v1.10.9 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 )
