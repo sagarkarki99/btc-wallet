@@ -9,6 +9,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/btcsuite/btcd/btcutil/bech32"
+	repo "github.com/sagarkarki99/internal/repository"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -17,10 +18,14 @@ type WalletService interface {
 }
 
 func NewWalletService() WalletService {
-	return &WalletServiceImpl{}
+	return &WalletServiceImpl{
+		repo: repo.New(),
+	}
 }
 
-type WalletServiceImpl struct{}
+type WalletServiceImpl struct {
+	repo repo.WalletRepository
+}
 
 func (ws *WalletServiceImpl) Create() string {
 
@@ -47,6 +52,22 @@ func (ws *WalletServiceImpl) Create() string {
 
 	modernAddress := segWitAddress(hashedRIPEMD160)
 	fmt.Println("Modern Address (SegWit) : ", modernAddress)
+	wallet := repo.Wallet{
+		PrivateKey: hex.EncodeToString(pk),
+		PublicKey:  hex.EncodeToString(pubKey),
+		UserId:     "1",
+	}
+	id, err := ws.repo.Save(wallet)
+	if err != nil {
+		fmt.Println("Error saving wallet : ", err)
+	}
+	fmt.Println("Wallet ID: ", id)
+	w, err := ws.repo.Get("1")
+	if err != nil {
+		fmt.Println("Error getting wallet : ", err)
+
+	}
+	fmt.Println("Wallet : ", w)
 	return modernAddress
 }
 

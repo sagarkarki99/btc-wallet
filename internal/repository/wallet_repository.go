@@ -13,12 +13,13 @@ type WalletRepository interface {
 }
 
 type Wallet struct {
-	PrivateKey string
-	PublicKey  string
-	UserId     string
+	Id         string `db:"id"`
+	PrivateKey string `db:"private_key"`
+	PublicKey  string `db:"public_key"`
+	UserId     string `db:"user_id"`
 }
 
-func New() *walletRepository {
+func New() WalletRepository {
 	return &walletRepository{
 		db: db.DB,
 	}
@@ -31,7 +32,7 @@ type walletRepository struct {
 
 func (db *walletRepository) Save(w Wallet) (string, error) {
 	var id string
-	err := db.db.QueryRow("INSERT INTO wallet (private_key, public_key, user_id) VALUES ($1, $2, $3) RETURNING id", w.PrivateKey, w.PublicKey, w.UserId).Scan(&id)
+	err := db.db.QueryRow("INSERT INTO wallets (private_key, public_key, user_id) VALUES ($1, $2, $3) RETURNING id", w.PrivateKey, w.PublicKey, w.UserId).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("error while saving wallet: %w", err)
 	}
@@ -40,7 +41,7 @@ func (db *walletRepository) Save(w Wallet) (string, error) {
 
 func (db *walletRepository) Get(walletId string) (*Wallet, error) {
 	var w Wallet
-	err := db.db.Get(&w, "SELECT * FROM wallet WHERE id = $1", walletId)
+	err := db.db.Get(&w, "SELECT * FROM wallets WHERE id = $1", walletId)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting wallet: %w", err)
 	}
