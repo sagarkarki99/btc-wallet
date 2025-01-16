@@ -2,10 +2,14 @@ package services
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil/base58"
+	"github.com/btcsuite/btcd/btcutil/bech32"
+	"golang.org/x/crypto/ripemd160"
 )
 
 type WalletService interface {
@@ -33,16 +37,52 @@ func (ws *WalletServiceImpl) Create() string {
 	}
 	fmt.Println(pubKey)
 
-	// generate public key from
-	// encrypt it afterwards to save to db
+	// hash it with sha256
+	hashed256 := sha256.Sum256(pubKey)
 
-	return ""
+	// hash it with ripemd160
+	ripeHasher := ripemd160.New()
+	ripeHasher.Write(hashed256[:])
+	hashedRIPEMD160 := ripeHasher.Sum(nil)
+
+	modernAddress := segWitAddress(hashedRIPEMD160)
+	fmt.Println("Modern Address (SegWit) : ", modernAddress)
+	return modernAddress
 }
 
-func (ws *WalletServiceImpl) generatePublicKey(pk []byte) (string, error) {
+func segWitAddress(hashedRIPEMD160 []byte) string {
+
+	bec32bytes, err := bech32.ConvertBits(hashedRIPEMD160, 8, 5, true)
+	if err != nil {
+		fmt.Println("Error converting bits : ", err)
+	}
+	bytesWithVersion := append([]byte{0}, bec32bytes...)
+	address, _ := bech32.Encode("bc", bytesWithVersion)
+	return address
+
+}
+
+func p2pkhAddress(hashedRIPEMD160 []byte) string {
+	//versioning the hash
+	versionedhash := append([]byte{0x00}, hashedRIPEMD160...)
+	singleHashed := sha256.Sum256(versionedhash)
+	doubleHashed := sha256.Sum256(singleHashed[:])
+
+	// adding checksum
+	firstFourBytes := doubleHashed[:4]
+	finalHash := append(versionedhash, firstFourBytes...)
+	fmt.Println("Final hash length : ", len(finalHash))
+
+	// Encode with base58
+	finalAddress := base58.Encode(finalHash)
+	fmt.Println("Final Address : ", finalAddress)
+	return finalAddress
+}
+
+func (ws *WalletServiceImpl) generatePublicKey(pk []byte) ([]byte, error) {
 	_, pubKey := btcec.PrivKeyFromBytes(pk)
 
-	return hex.EncodeToString(pubKey.SerializeCompressed()), nil
+	return pubKey.SerializeCompressed(), nil
 }
 
 func (ws *WalletServiceImpl) generatePrivateKey() ([]byte, error) {
