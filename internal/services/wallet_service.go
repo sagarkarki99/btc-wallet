@@ -15,6 +15,7 @@ import (
 
 type WalletService interface {
 	Create() string
+	Get(walletId string) string
 }
 
 func NewWalletService() WalletService {
@@ -55,6 +56,7 @@ func (ws *WalletServiceImpl) Create() string {
 	wallet := repo.Wallet{
 		PrivateKey: hex.EncodeToString(pk),
 		PublicKey:  hex.EncodeToString(pubKey),
+		Address:    modernAddress,
 		UserId:     "1",
 	}
 	id, err := ws.repo.Save(wallet)
@@ -71,6 +73,14 @@ func (ws *WalletServiceImpl) Create() string {
 	return modernAddress
 }
 
+func (ws *WalletServiceImpl) Get(id string) string {
+	wallet, err := ws.repo.Get(id)
+	if err != nil {
+		fmt.Println("Error getting wallet : ", err)
+	}
+	return wallet.Address
+}
+
 func segWitAddress(hashedRIPEMD160 []byte) string {
 
 	bec32bytes, err := bech32.ConvertBits(hashedRIPEMD160, 8, 5, true)
@@ -78,7 +88,7 @@ func segWitAddress(hashedRIPEMD160 []byte) string {
 		fmt.Println("Error converting bits : ", err)
 	}
 	bytesWithVersion := append([]byte{0}, bec32bytes...)
-	address, _ := bech32.Encode("bc", bytesWithVersion)
+	address, _ := bech32.Encode("tb", bytesWithVersion)
 	return address
 
 }

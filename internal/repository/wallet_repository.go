@@ -16,6 +16,7 @@ type Wallet struct {
 	Id         string `db:"id"`
 	PrivateKey string `db:"private_key"`
 	PublicKey  string `db:"public_key"`
+	Address    string `db:"wallet_address"`
 	UserId     string `db:"user_id"`
 }
 
@@ -32,7 +33,7 @@ type walletRepository struct {
 
 func (db *walletRepository) Save(w Wallet) (string, error) {
 	var id string
-	err := db.db.QueryRow("INSERT INTO wallets (private_key, public_key, user_id) VALUES ($1, $2, $3) RETURNING id", w.PrivateKey, w.PublicKey, w.UserId).Scan(&id)
+	err := db.db.QueryRow("INSERT INTO wallets (private_key, public_key, wallet_address, user_id) VALUES ($1, $2, $3, $4) RETURNING id", w.PrivateKey, w.PublicKey, w.Address, w.UserId).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("error while saving wallet: %w", err)
 	}
