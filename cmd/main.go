@@ -11,5 +11,6 @@ func main() {
 	db.Connect()
 	fmt.Println("Welcome to bitcoin wallet server")
 	ws := services.NewWalletService()
-	ws.Create()
+	// ws.Create()
+	fmt.Println(ws.Get("3"))
 }
