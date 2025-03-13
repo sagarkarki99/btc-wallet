@@ -12,7 +12,7 @@ var DB *sqlx.DB
 
 func Connect() {
 	ctx := context.Background()
-	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=postgres sslmode=disable"
+	connStr := "host=postgres-database port=5432 user=postgres password=postgres dbname=postgres-db sslmode=disable"
 	db, err := sqlx.ConnectContext(ctx, "postgres", connStr)
 	DB = db
 	if err != nil {
