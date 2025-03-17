@@ -1,17 +1,20 @@
-version: "3.8"
 services:
-  postgres:
-    image: postgres:latest
-    container_name: postgres_db
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+  bitcoin-wallet:
+    image: btc-wallet
+    container_name: bitcoin-wallet
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - 8080:8080
+    depends_on:
+      - postgres-database
+    env_file:
+      - ./.env
 
-volumes:
-  postgres_data:
+  postgres-database:
+    image: postgres
+    container_name: postgres-database
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres-db
