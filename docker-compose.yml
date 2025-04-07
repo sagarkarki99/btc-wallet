@@ -8,6 +8,8 @@ services:
       - postgres-database
     env_file:
       - ./.env
+    volumes:
+      - .:/app/
 
   postgres-database:
     image: postgres
