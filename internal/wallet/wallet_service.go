@@ -1,4 +1,4 @@
-package services
+package wallet
 
 import (
 	"crypto/rand"
@@ -14,8 +14,8 @@ import (
 )
 
 type WalletService interface {
-	Create() string
 	Get(walletId string) string
+	GetDepositAddress(userId string) string
 }
 
 func NewWalletService() WalletService {
@@ -126,4 +126,9 @@ func (ws *WalletServiceImpl) generatePrivateKey() ([]byte, error) {
 	fmt.Println("Raw Private Key : ", hex.EncodeToString(privateKey))
 
 	return privateKey, nil
+}
+
+func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
+	return ws.Create()
+
 }

@@ -4,16 +4,13 @@ import (
 	"fmt"
 
 	"github.com/sagarkarki99/db"
-	"github.com/sagarkarki99/internal/services"
+	"github.com/sagarkarki99/internal/wallet"
 )
 
 func main() {
 	db.Connect()
 	fmt.Println("Welcome to bitcoin wallet server")
-	ws := services.NewWalletService()
-	ts := services.NewTransactionService(ws)
-
-	// ws.Create()
-	// fmt.Println(ws.Get("3"))
-	ts.GetTransaction()
+	ws := wallet.NewWalletService()
+	addr := ws.GetDepositAddress("1")
+	fmt.Println("Deposit Address: ", addr)
 }
