@@ -52,7 +52,7 @@ func (kc *KeychainImpl) GenerateAddress() string {
 	hashedRIPEMD160 := ripeHasher.Sum(nil)
 
 	modernAddress := segWitAddress(hashedRIPEMD160)
-	fmt.Println("Modern Address (SegWit) : ", modernAddress)
+
 	keys := &db.KeyAddress{
 		PrivateKey: hex.EncodeToString(pk),
 		PublicKey:  hex.EncodeToString(pubKey),
@@ -110,8 +110,5 @@ func (kc *KeychainImpl) generatePrivateKey() ([]byte, error) {
 	if _, err := rand.Read(privateKey); err != nil {
 		return nil, fmt.Errorf("error generating random bytes: %v", err)
 	}
-
-	fmt.Println("Raw Private Key : ", hex.EncodeToString(privateKey))
-
 	return privateKey, nil
 }

@@ -10,9 +10,15 @@ import (
 
 func main() {
 	db.Connect()
-	fmt.Println("Welcome to bitcoin wallet server")
+	RunApp()
+
+}
+
+func RunApp() {
+	fmt.Println("Welcome to your bitcoin wallet., ")
 	kc := keychain.NewKeychain()
 	ws := wallet.NewWalletService(kc)
 	addr := ws.GetDepositAddress("1")
 	fmt.Println("Deposit Address: ", addr)
+	fmt.Scanf("%s", &addr)
 }
