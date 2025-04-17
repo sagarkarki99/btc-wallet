@@ -1,15 +1,18 @@
 package wallet
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/sagarkarki99/db"
+	"github.com/sagarkarki99/internal/blockchain"
 	"github.com/sagarkarki99/internal/keychain"
 	repo "github.com/sagarkarki99/internal/repository"
 )
 
 type WalletService interface {
 	GetDepositAddress(userId string) string
+	GetBalance(userId string) float64
 }
 
 func NewWalletService(kc keychain.Keychain) WalletService {
@@ -39,4 +42,25 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 		fmt.Println("Error getting wallet : ", err)
 	}
 	return w.Address
+}
+
+func (ws *WalletServiceImpl) GetBalance(addr string) float64 {
+	fmt.Println("Getting UTXOs for address:... ", addr)
+	fmt.Println("-------------")
+	address := "addr(" + addr + ")"
+	params := []interface{}{"start", []string{address}}
+	fmt.Println(params)
+	res, _ := blockchain.Query("scantxoutset", params)
+	r, _ := res.MarshalJSON()
+	var utxoMap map[string]interface{}
+	if err := json.Unmarshal(r, &utxoMap); err != nil {
+		fmt.Println("Error unmarshaling UTXO response:", err)
+		return 0
+	}
+
+	if total, ok := utxoMap["total_amount"].(float64); ok {
+		return total
+	}
+	fmt.Println("Total Amount: ", utxoMap)
+	return 0
 }
