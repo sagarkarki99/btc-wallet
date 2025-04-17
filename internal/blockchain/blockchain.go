@@ -29,33 +29,31 @@ func Start() {
 		log.Fatal(err)
 	}
 	rpcClient = rc
-	res := make(map[string]interface{})
-	// r, err := s.rpcClient.GetBlockChainInfo()
-	// if err != nil {
-	// 	log.Printf("Error getting blockchain info: %v", err)
-	// 	return
-	// }
-	// data, err := response.MarshalJSON()
-	// json.Unmarshal(data, &res)
+
 	response, err := rpcClient.RawRequest("getblockchaininfo", nil)
 	if err != nil {
 		log.Printf("Error getting blockchain info: %v", err)
 		return
 	}
-	jsonData, err := response.MarshalJSON()
-	json.Unmarshal(jsonData, &res)
-	fmt.Println("BlockchainInfo:", res)
-	fmt.Println("Blocks:", res["blocks"])
+	jsonbyte, _ := response.MarshalJSON()
+	jsonData := string(jsonbyte)
+	fmt.Println("BlockchainInfo:", jsonData)
 
-	if err != nil {
-		log.Printf("Error marshalling response: %v", err)
-		return
-	}
 	// when running bitcoind -daemon, it will run in 120.0.0.1:28842
 	// Connect to 120.0.0.1:28842 that is running in this machine (not in container)
 	// make a rpc call to scantxoutset start '["addr(tb1qd5qt4e7dwtjn8s8smrtgyxtkazpcj5get02jyr)"]'
 }
 
-func Query(rpcMethod string) {
-
+func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
+	jsonParams := make([]json.RawMessage, len(params))
+	for i, param := range params {
+		jsonBytes, err := json.Marshal(param)
+		if err != nil {
+			log.Printf("Error marshaling parameter %d: %v", i, err)
+			return nil, err
+		}
+		jsonParams[i] = jsonBytes
+	}
+	res, err := rpcClient.RawRequest(rpcMethod, jsonParams)
+	return &res, err
 }
