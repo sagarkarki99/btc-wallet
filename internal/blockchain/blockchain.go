@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/btcsuite/btcd/rpcclient"
+	"github.com/pebbe/zmq4"
 )
 
 var rpcClient *rpcclient.Client
@@ -38,7 +39,7 @@ func Start() {
 	jsonbyte, _ := response.MarshalJSON()
 	jsonData := string(jsonbyte)
 	fmt.Println("BlockchainInfo:", jsonData)
-
+	go listenToNode()
 	// when running bitcoind -daemon, it will run in 120.0.0.1:28842
 	// Connect to 120.0.0.1:28842 that is running in this machine (not in container)
 	// make a rpc call to scantxoutset start '["addr(tb1qd5qt4e7dwtjn8s8smrtgyxtkazpcj5get02jyr)"]'
@@ -56,4 +57,29 @@ func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 	}
 	res, err := rpcClient.RawRequest(rpcMethod, jsonParams)
 	return &res, err
+}
+
+func listenToNode() {
+	sub, err := zmq4.NewSocket(zmq4.SUB)
+	if err != nil {
+		fmt.Println("Could not create socket: ", err)
+	}
+	defer sub.Close()
+
+	err = sub.Connect("tcp://host.docker.internal:28332")
+	fmt.Println("Connected to socket: ", sub)
+	if err != nil {
+		fmt.Println("Could not connect to socket: ", err)
+	}
+
+	if err := sub.SetSubscribe("hashblock"); err != nil {
+		fmt.Println("Could not set subscribe: ", err)
+	}
+
+	for {
+		fmt.Println("Waiting for message...")
+		msg, _ := sub.RecvMessageBytes(0)
+
+		fmt.Println("Parsed Message with Sprintf: ", fmt.Sprintf("%x", msg[1]))
+	}
 }
