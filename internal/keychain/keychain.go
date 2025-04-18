@@ -4,18 +4,20 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/btcsuite/btcd/btcutil/bech32"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sagarkarki99/db"
 	repo "github.com/sagarkarki99/internal/repository"
-	"golang.org/x/crypto/ripemd160"
 )
 
 type Keychain interface {
-	GenerateAddress() string
+	GenerateAddress() (string, error)
 	SignTransaction() string
 }
 
@@ -29,39 +31,52 @@ func NewKeychain() Keychain {
 	}
 }
 
-func (kc *KeychainImpl) GenerateAddress() string {
-	pk, err := kc.generatePrivateKey()
+func (kc *KeychainImpl) GenerateAddress() (string, error) {
+	pk, _ := kc.generatePrivateKey()
+	pubKey, _ := kc.generatePublicKey(pk)
+	addr, err := btcutil.NewAddressPubKey(pubKey, &chaincfg.RegressionNetParams)
 	if err != nil {
-		fmt.Printf("error generating private key: %v", err)
-		return ""
+		fmt.Println("Error creating address : ", err)
+		return "", errors.New("error generating address")
 	}
 
-	pubKey, err := kc.generatePublicKey(pk)
-	if err != nil {
-		fmt.Printf("error generating public key: %v", err)
-		return ""
-	}
-	fmt.Println(pubKey)
-
-	// hash it with sha256
-	hashed256 := sha256.Sum256(pubKey)
-
-	// hash it with ripemd160
-	ripeHasher := ripemd160.New()
-	ripeHasher.Write(hashed256[:])
-	hashedRIPEMD160 := ripeHasher.Sum(nil)
-
-	modernAddress := segWitAddress(hashedRIPEMD160)
-
-	keys := &db.KeyAddress{
+	kc.kr.Save(&db.KeyAddress{
 		PrivateKey: hex.EncodeToString(pk),
 		PublicKey:  hex.EncodeToString(pubKey),
-	}
-	_, err = kc.kr.Save(keys)
-	if err != nil {
-		fmt.Println("Error saving wallet : ", err)
-	}
-	return modernAddress
+	})
+
+	return addr.EncodeAddress(), nil
+	// if err != nil {
+	// 	fmt.Printf("error generating private key: %v", err)
+	// 	return ""
+	// }
+
+	// pubKey, err := kc.generatePublicKey(pk)
+	// if err != nil {
+	// 	fmt.Printf("error generating public key: %v", err)
+	// 	return ""
+	// }
+	// fmt.Println(pubKey)
+
+	// // hash it with sha256
+	// hashed256 := sha256.Sum256(pubKey)
+
+	// // hash it with ripemd160
+	// ripeHasher := ripemd160.New()
+	// ripeHasher.Write(hashed256[:])
+	// hashedRIPEMD160 := ripeHasher.Sum(nil)
+
+	// modernAddress := segWitAddress(hashedRIPEMD160)
+
+	// keys := &db.KeyAddress{
+	// 	PrivateKey: hex.EncodeToString(pk),
+	// 	PublicKey:  hex.EncodeToString(pubKey),
+	// }
+	// _, err = kc.kr.Save(keys)
+	// if err != nil {
+	// 	fmt.Println("Error saving wallet : ", err)
+	// }
+	// return modernAddress
 }
 
 func (kc *KeychainImpl) SignTransaction() string {

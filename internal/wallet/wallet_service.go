@@ -13,6 +13,7 @@ import (
 type WalletService interface {
 	GetDepositAddress(userId string) string
 	GetBalance(userId string) float64
+	SendToAddress(userId string, amount float64, destinationAddress string) error
 }
 
 func NewWalletService(kc keychain.Keychain) WalletService {
@@ -32,7 +33,8 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	if wallet != nil {
 		return wallet.Address
 	}
-	addr := ws.kc.GenerateAddress()
+	addr, _ := ws.kc.GenerateAddress()
+
 	w := db.Wallet{
 		Address: addr,
 		UserId:  userId,
@@ -63,4 +65,12 @@ func (ws *WalletServiceImpl) GetBalance(addr string) float64 {
 	}
 	fmt.Println("Total Amount: ", utxoMap)
 	return 0
+
+}
+
+func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destinationAddress string) error {
+	// create transaction payload
+	// Sign it using keychain
+	// broad cast it to the network.
+	return nil
 }
