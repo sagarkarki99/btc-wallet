@@ -9,7 +9,29 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
-var rpcClient *rpcclient.Client
+type RPCClientManager struct {
+	config    *rpcclient.ConnConfig
+	endpoints map[string]string
+}
+
+func (cm *RPCClientManager) GetClient(walletname string) *rpcclient.Client {
+	if cm.endpoints[walletname] == "" {
+		conn, err := rpcclient.New(cm.config, nil)
+		if err != nil {
+			log.Printf("Failed to connect to Bitcoin node: %v", err)
+			log.Printf("Please check if your Bitcoin node is running and accessible from Docker")
+			log.Printf("Ensure 'rpcallowip' in bitcoin.conf allows connections from Docker networks")
+		}
+		return conn
+	}
+	config := cm.config
+	config.Host = fmt.Sprintf("%s/wallet/%s", cm.config.Host, cm.endpoints[walletname])
+	conn, _ := rpcclient.New(config, nil)
+	return conn
+
+}
+
+var rpcManager *RPCClientManager
 
 func Start() {
 	// Connect to the node from here and start..
@@ -21,17 +43,11 @@ func Start() {
 		DisableTLS:   true,
 	}
 
-	rc, err := rpcclient.New(&connConfig, nil)
-
-	if err != nil {
-		log.Printf("Failed to connect to Bitcoin node: %v", err)
-		log.Printf("Please check if your Bitcoin node is running and accessible from Docker")
-		log.Printf("Ensure 'rpcallowip' in bitcoin.conf allows connections from Docker networks")
-		log.Fatal(err)
+	rpcManager = &RPCClientManager{
+		config: &connConfig,
 	}
-	rpcClient = rc
 
-	response, err := rpcClient.RawRequest("getblockchaininfo", nil)
+	response, err := rpcManager.GetClient("").RawRequest("getblockchaininfo", nil)
 	if err != nil {
 		log.Printf("Error getting blockchain info: %v", err)
 		return
@@ -45,6 +61,12 @@ func Start() {
 	// make a rpc call to scantxoutset start '["addr(tb1qd5qt4e7dwtjn8s8smrtgyxtkazpcj5get02jyr)"]'
 }
 
+func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
+
+	res, err := rpcManager.GetClient("nokeyswallet").RawRequest(rpcMethod, []json.RawMessage{data})
+	return &res, err
+}
+
 func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 	jsonParams := make([]json.RawMessage, len(params))
 	for i, param := range params {
@@ -55,7 +77,7 @@ func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 		}
 		jsonParams[i] = jsonBytes
 	}
-	res, err := rpcClient.RawRequest(rpcMethod, jsonParams)
+	res, err := rpcManager.GetClient("").RawRequest(rpcMethod, jsonParams)
 	return &res, err
 }
 
