@@ -26,9 +26,6 @@ func RunApp() {
 	ws := wallet.NewWalletService(kc)
 	addr := ws.GetDepositAddress("11")
 	fmt.Println("Deposit Address: ", addr)
-	balance := ws.GetBalance(addr)
-	fmt.Println("Deposit Address: ", addr)
-	fmt.Println("Balance: ", balance)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/wallet/deposit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -38,6 +35,7 @@ func RunApp() {
 		var req struct {
 			UserId string `json:"userId"`
 		}
+		defer r.Body.Close()
 
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.UserId == "" {
@@ -46,26 +44,30 @@ func RunApp() {
 		}
 
 		addr := ws.GetDepositAddress(req.UserId)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 		response := map[string]string{
 			"address": addr,
 		}
 		responseBytes, _ := json.Marshal(response)
-		w.Write(responseBytes)
-		defer r.Body.Close()
+		writeResponse(w, responseBytes, http.StatusOK)
 
 	})
 
-	r.HandleFunc("/wallet/GetBalance", func(w http.ResponseWriter, r *http.Request) {
-		addr := ws.GetDepositAddress("11")
-		ws.GetBalance(addr)
+	r.HandleFunc("/api/v1/wallet/balance", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			w.Write([]byte("Method not allowed"))
+			return
+		}
+
+		params := r.URL.Query()
+		userId := params.Get("userId")
+		addr := ws.GetDepositAddress(userId)
+		balance := ws.GetBalance(addr)
 		res := map[string]float64{
 			"balance": balance,
 		}
 		resBytes, _ := json.Marshal(res)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(resBytes)
+		writeResponse(w, resBytes, http.StatusOK)
 	})
 
 	r.HandleFunc("/api/v1/wallet/send", func(w http.ResponseWriter, r *http.Request) {
@@ -85,19 +87,22 @@ func RunApp() {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
 			return
 		}
-		// w.Header().Set("Content-Type", "application/json")
-		// w.WriteHeader(http.StatusOK)
-		// by, _ := json.Marshal(requestBody)
-		// w.Write(by)
 
 		if err := ws.SendToAddress(requestBody.UserId, requestBody.Amount, requestBody.SenderAddress); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"message": "Failed to send transaction",error: "` + err.Error() + `"}`))
+			res := `{"message": "Failed to send transaction",error: "` + err.Error() + `"}`
+			writeResponse(w, []byte(res), http.StatusBadRequest)
 		}
+
+		writeResponse(w, []byte(`{"message":"Your transaction is sent to blockchain"}`), http.StatusOK)
 	})
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func writeResponse(w http.ResponseWriter, data []byte, statusCode int) {
+	w.Header().Set("Content-Type", "Application/json")
+	w.WriteHeader(statusCode)
+	w.Write(data)
 }

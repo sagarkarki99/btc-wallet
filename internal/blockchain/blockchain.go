@@ -1,11 +1,14 @@
 package blockchain
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/btcsuite/btcd/rpcclient"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/pebbe/zmq4"
 )
 
@@ -54,7 +57,9 @@ func Start() {
 	}
 	jsonbyte, _ := response.MarshalJSON()
 	jsonData := string(jsonbyte)
-	fmt.Println("BlockchainInfo:", jsonData)
+	enc := json.NewEncoder(os.Stdout)
+	enc.Encode(jsonData)
+	// fmt.Println("BlockchainInfo:", jsonData)
 	go listenToNode()
 	// when running bitcoind -daemon, it will run in 120.0.0.1:28842
 	// Connect to 120.0.0.1:28842 that is running in this machine (not in container)
@@ -94,14 +99,23 @@ func listenToNode() {
 		fmt.Println("Could not connect to socket: ", err)
 	}
 
-	if err := sub.SetSubscribe("hashblock"); err != nil {
+	if err := sub.SetSubscribe("rawtx"); err != nil {
 		fmt.Println("Could not set subscribe: ", err)
 	}
 
 	for {
 		fmt.Println("Waiting for message...")
 		msg, _ := sub.RecvMessageBytes(0)
+		var trx wire.MsgTx
 
-		fmt.Println("Parsed Message with Sprintf: ", fmt.Sprintf("%x", msg[1]))
+		if err := trx.Deserialize(bytes.NewReader(msg[1])); err != nil {
+			fmt.Println("Error deserializing transaction:", err)
+		}
+
+		jsonBytes, err := json.MarshalIndent(trx, "", "  ")
+		if err != nil {
+			fmt.Println("Error marshaling transaction:", err)
+		}
+		fmt.Printf("Parsed Transaction:\n%s\n", string(jsonBytes))
 	}
 }
