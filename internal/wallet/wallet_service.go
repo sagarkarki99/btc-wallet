@@ -2,20 +2,32 @@ package wallet
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
-	"github.com/btcsuite/btcd/btcutil"
-	"github.com/btcsuite/btcd/wire"
 	"github.com/sagarkarki99/db"
 	"github.com/sagarkarki99/internal/blockchain"
 	"github.com/sagarkarki99/internal/keychain"
 	repo "github.com/sagarkarki99/internal/repository"
 )
 
+type Input struct {
+	Txid         string  `json:"txid"`
+	Amount       float64 `json:"amount"`
+	ScriptPubKey string  `json:"scriptPubKey"`
+	Vout         int     `json:"vout"`
+}
+
+type Utxo struct {
+	Inputs      []Input `json:"unspents"`
+	TotalAmount float64 `json:"total_amount"`
+}
+
 type WalletService interface {
 	GetDepositAddress(userId string) string
-	GetBalance(userId string) float64
+	GetBalance(addr string) float64
 	SendToAddress(userId string, amount float64, destinationAddress string) error
 }
 
@@ -80,50 +92,97 @@ func (ws *WalletServiceImpl) getDescriptorPayload(addr string) ([]byte, error) {
 }
 
 func (ws *WalletServiceImpl) GetBalance(addr string) float64 {
-	utxoMap, err := ws.getUTXOs(addr)
+	utxo, err := ws.getUTXOs(addr)
 	if err != nil {
 		fmt.Println("Error getting UTXOs: ", err)
 		return 0
 	}
 
-	if total, ok := utxoMap["total_amount"].(float64); ok {
-		return total
-	}
-	fmt.Println("Total Amount: ", utxoMap)
-	return 0
+	fmt.Println("Total Amount: ", utxo.TotalAmount)
+	return utxo.TotalAmount
 
 }
 
-func (*WalletServiceImpl) getUTXOs(addr string) (map[string]interface{}, error) {
+func (*WalletServiceImpl) getUTXOs(addr string) (utxo *Utxo, err error) {
 	address := "addr(" + addr + ")"
 	params := []interface{}{"start", []string{address}}
 	res, _ := blockchain.Query("scantxoutset", params)
 	r, _ := res.MarshalJSON()
-	var utxoMap map[string]interface{}
-	if err := json.Unmarshal(r, &utxoMap); err != nil {
+
+	if err := json.Unmarshal(r, &utxo); err != nil {
 		fmt.Println("Error unmarshaling UTXO response:", err)
 		return nil, err
 	}
-	return utxoMap, nil
+	return utxo, nil
 }
 
 func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destinationAddress string) error {
-	sender, _ := ws.repo.Get(userId)
-	utxos, err := ws.getUTXOs(sender.Address)
+	sender, err := ws.repo.Get(userId)
+	if err != nil {
+		return errors.New("user do not have any wallet")
+	}
+	fmt.Println("Sender Address: ", sender.Address)
+	utxo, err := ws.getUTXOs(sender.Address)
 	if err != nil {
 		fmt.Println("Error getting UTXOs: ", err)
 		return err
 	}
 
-	if utxos["total_amount"].(float64) < amount {
+	if utxo.TotalAmount < amount {
 		return fmt.Errorf("insufficient funds")
 	}
 
-	tx := btcutil.NewTx(wire.NewMsgTx(1))
+	// var tx wire.MsgTx
 
+	json.NewEncoder(os.Stdout).Encode(utxo)
+
+	// hash, err := chainhash.NewHashFromStr(utxo.Inputs[1].Txid)
+	// if err != nil {
+	// 	return fmt.Errorf("error creating hash: %v", err)
+	// }
+	// outputPoint := wire.NewOutPoint(hash, uint32(utxo.Inputs[1].Vout))
+	// tx.AddTxIn(wire.NewTxIn(outputPoint, nil, nil))
+
+	// if err != nil {
+	// 	return fmt.Errorf("invalid address: %v", err)
+	// }
+
+	// address, err := btcutil.DecodeAddress(sender.Address, &chaincfg.RegressionNetParams)
+	// if err != nil {
+	// 	return fmt.Errorf("invalid address: %v", err)
+	// }
+	// pkScript, err := txscript.PayToAddrScript(address)
+	// if err != nil {
+	// 	return fmt.Errorf("error creating script: %v", err)
+	// }
+	// satoshis, err := btcutil.NewAmount(amount)
+	// if err != nil {
+	// 	return fmt.Errorf("error creating amount: %v", err)
+	// }
+
+	// txOut := wire.NewTxOut(int64(satoshis), pkScript)
+	// tx.AddTxOut(txOut)
+
+	// fmt.Printf("Transaction Details:\n")
+	// fmt.Printf("  Version: %d\n", tx.Version)
+	// fmt.Printf("  Inputs (%d):\n", len(tx.TxIn))
+	// for i, in := range tx.TxIn {
+	// 	fmt.Printf("    Input %d:\n", i)
+	// 	fmt.Printf("      PrevTxHash: %s\n", in.PreviousOutPoint.Hash.String())
+	// 	fmt.Printf("      PrevTxIndex: %d\n", in.PreviousOutPoint.Index)
+	// 	fmt.Printf("      Sequence: %d\n", in.Sequence)
+	// }
+	// fmt.Printf("  Outputs (%d):\n", len(tx.TxOut))
+	// for i, out := range tx.TxOut {
+	// 	fmt.Printf("    Output %d:\n", i)
+	// 	fmt.Printf("      Value: %d satoshis\n", out.Value)
+	// 	fmt.Printf("      Script : %s\n", out.PkScript)
+	// }
+	// fmt.Printf("  LockTime: %d\n", tx.LockTime)
+	// tx := wire.NewMsgTx(1)
+	// tx.AddTxIn(&wire.NewTxIn())
 	// Get UTXOs from the address. send this tx to keychain and keychain will add signature to this payload.
-	tx.MsgTx().TxIn = []*wire.TxIn{}
-	tx.MsgTx().TxOut = []*wire.TxOut{}
+
 	// create transaction payload
 	// Sign it using keychain
 	// broad cast it to the network.
