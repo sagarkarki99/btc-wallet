@@ -37,8 +37,7 @@ func RunApp() {
 		}
 		defer r.Body.Close()
 
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.UserId == "" {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "UserId is required", http.StatusBadRequest)
 			return
 		}

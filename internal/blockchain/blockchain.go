@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 
 	"github.com/btcsuite/btcd/rpcclient"
@@ -21,9 +22,9 @@ func (cm *RPCClientManager) GetClient(walletname string) *rpcclient.Client {
 	if cm.endpoints[walletname] == "" {
 		conn, err := rpcclient.New(cm.config, nil)
 		if err != nil {
-			log.Printf("Failed to connect to Bitcoin node: %v", err)
-			log.Printf("Please check if your Bitcoin node is running and accessible from Docker")
-			log.Printf("Ensure 'rpcallowip' in bitcoin.conf allows connections from Docker networks")
+			slog.Error("Failed to connect to Bitcoin node: %v", "Error", err.Error())
+			slog.Error("Please check if your Bitcoin node is running and accessible from Docker")
+			slog.Error("Ensure 'rpcallowip' in bitcoin.conf allows connections from Docker networks")
 		}
 		return conn
 	}
@@ -77,7 +78,7 @@ func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 	for i, param := range params {
 		jsonBytes, err := json.Marshal(param)
 		if err != nil {
-			log.Printf("Error marshaling parameter %d: %v", i, err)
+			slog.Error("Error marshaling parameter", "parameter", param, "error", err.Error())
 			return nil, err
 		}
 		jsonParams[i] = jsonBytes
@@ -96,7 +97,9 @@ func listenToNode() {
 	err = sub.Connect("tcp://host.docker.internal:28332")
 	fmt.Println("Connected to socket: ", sub)
 	if err != nil {
-		fmt.Println("Could not connect to socket: ", err)
+		slog.Error("Could not connect to socket: ", "Error", err.Error())
+		// can add a retry logic here
+		return
 	}
 
 	if err := sub.SetSubscribe("rawtx"); err != nil {
@@ -109,12 +112,14 @@ func listenToNode() {
 		var trx wire.MsgTx
 
 		if err := trx.Deserialize(bytes.NewReader(msg[1])); err != nil {
-			fmt.Println("Error deserializing transaction:", err)
+			slog.Error("Error deserializing transaction", "error", err.Error())
+			return
 		}
 
 		jsonBytes, err := json.MarshalIndent(trx, "", "  ")
 		if err != nil {
-			fmt.Println("Error marshaling transaction:", err)
+			slog.Error("Error marshaling transaction", "error", err.Error())
+			return
 		}
 		fmt.Printf("Parsed Transaction:\n%s\n", string(jsonBytes))
 	}
