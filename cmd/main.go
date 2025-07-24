@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -95,7 +96,8 @@ func RunApp() {
 		writeResponse(w, []byte(`{"message":"Your transaction is sent to blockchain"}`), http.StatusOK)
 	})
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	slog.Info("Listening on port 8500")
+	if err := http.ListenAndServe(":8500", r); err != nil {
 		log.Fatal(err)
 	}
 }

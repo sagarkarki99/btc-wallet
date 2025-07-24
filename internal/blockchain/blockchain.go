@@ -40,15 +40,19 @@ var rpcManager *RPCClientManager
 func Start() {
 	// Connect to the node from here and start..
 	connConfig := rpcclient.ConnConfig{
-		Host:         "host.docker.internal:18443",
-		User:         "test",
-		Pass:         "test",
+		Host:         fmt.Sprintf("%s:%s", host, port),
+		User:         user,
+		Pass:         pass,
 		HTTPPostMode: true,
 		DisableTLS:   true,
 	}
 
 	rpcManager = &RPCClientManager{
 		config: &connConfig,
+		endpoints: map[string]string{
+			"mywallets":         "mywallets",
+			"descriptorwallets": "descriptorwallets",
+		},
 	}
 
 	response, err := rpcManager.GetClient("").RawRequest("getblockchaininfo", nil)
@@ -60,16 +64,12 @@ func Start() {
 	jsonData := string(jsonbyte)
 	enc := json.NewEncoder(os.Stdout)
 	enc.Encode(jsonData)
-	// fmt.Println("BlockchainInfo:", jsonData)
 	go listenToNode()
-	// when running bitcoind -daemon, it will run in 120.0.0.1:28842
-	// Connect to 120.0.0.1:28842 that is running in this machine (not in container)
-	// make a rpc call to scantxoutset start '["addr(tb1qd5qt4e7dwtjn8s8smrtgyxtkazpcj5get02jyr)"]'
 }
 
 func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
 
-	res, err := rpcManager.GetClient("nokeyswallet").RawRequest(rpcMethod, []json.RawMessage{data})
+	res, err := rpcManager.GetClient("descriptorwallet").RawRequest(rpcMethod, []json.RawMessage{data})
 	return &res, err
 }
 
@@ -93,8 +93,9 @@ func listenToNode() {
 		fmt.Println("Could not create socket: ", err)
 	}
 	defer sub.Close()
-
-	err = sub.Connect("tcp://host.docker.internal:28332")
+	godotenv.Load(".env")
+	host := os.Getenv("BTC_RPC_NODE")
+	err = sub.Connect(fmt.Sprintf("tcp://%s", host))
 	fmt.Println("Connected to socket: ", sub)
 	if err != nil {
 		slog.Error("Could not connect to socket: ", "Error", err.Error())
