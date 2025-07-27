@@ -34,7 +34,7 @@ func NewKeychain() Keychain {
 func (kc *KeychainImpl) GenerateAddress() (string, error) {
 	pk, _ := kc.generatePrivateKey()
 	pubKey, _ := kc.generatePublicKey(pk)
-	addr, err := btcutil.NewAddressPubKey(pubKey, &chaincfg.RegressionNetParams)
+	addr, err := btcutil.NewAddressPubKey(pubKey, &chaincfg.MainNetParams)
 	if err != nil {
 		fmt.Println("Error creating address : ", err)
 		return "", errors.New("error generating address")

@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/joho/godotenv"
 	"github.com/pebbe/zmq4"
 )
 
@@ -39,6 +41,14 @@ var rpcManager *RPCClientManager
 
 func Start() {
 	// Connect to the node from here and start..
+	if err := godotenv.Load(".env"); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	host := os.Getenv("BTC_RPC_NODE")
+	port := os.Getenv("BTC_RPC_PORT")
+	user := os.Getenv("BTC_RPC_USER")
+	pass := os.Getenv("BTC_RPC_PASS")
+
 	connConfig := rpcclient.ConnConfig{
 		Host:         fmt.Sprintf("%s:%s", host, port),
 		User:         user,
@@ -116,6 +126,23 @@ func listenToNode() {
 			slog.Error("Error deserializing transaction", "error", err.Error())
 			return
 		}
+
+		_, err := os.Stat("transaction.json")
+		if err != nil {
+			if os.IsNotExist(err) {
+				os.Create("transaction.json")
+			}
+		}
+		f, _ := os.OpenFile("transaction.json", os.O_RDWR|os.O_APPEND, 0644)
+		defer f.Close()
+		var d []byte
+		f.Read(d)
+
+		io := bufio.NewWriter(f)
+		json.NewEncoder(io).Encode(&trx)
+
+		io.WriteString(",")
+		io.Flush()
 
 		jsonBytes, err := json.MarshalIndent(trx, "", "  ")
 		if err != nil {
