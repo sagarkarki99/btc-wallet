@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,9 +15,14 @@ import (
 	"github.com/sagarkarki99/internal/wallet"
 )
 
+var globalContext context.Context
+var cancel context.CancelFunc
+
 func main() {
+	globalContext, cancel = context.WithCancel(context.Background())
+	defer cancel()
 	db.Connect()
-	go blockchain.Start()
+	go blockchain.Start(globalContext)
 	RunApp()
 
 }

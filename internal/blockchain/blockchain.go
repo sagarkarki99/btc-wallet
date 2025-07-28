@@ -3,11 +3,13 @@ package blockchain
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
@@ -39,7 +41,7 @@ func (cm *RPCClientManager) GetClient(walletname string) *rpcclient.Client {
 
 var rpcManager *RPCClientManager
 
-func Start() {
+func Start(ctx context.Context) {
 	// Connect to the node from here and start..
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatal("Error loading .env file")
@@ -74,7 +76,7 @@ func Start() {
 	jsonData := string(jsonbyte)
 	enc := json.NewEncoder(os.Stdout)
 	enc.Encode(jsonData)
-	go listenToNode()
+	go listenToNode(ctx)
 }
 
 func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
@@ -97,7 +99,7 @@ func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 	return &res, err
 }
 
-func listenToNode() {
+func listenToNode(ctx context.Context) {
 	sub, err := zmq4.NewSocket(zmq4.SUB)
 	if err != nil {
 		fmt.Println("Could not create socket: ", err)
@@ -105,50 +107,62 @@ func listenToNode() {
 	defer sub.Close()
 	godotenv.Load(".env")
 	host := os.Getenv("BTC_RPC_NODE")
-	err = sub.Connect(fmt.Sprintf("tcp://%s", host))
-	fmt.Println("Connected to socket: ", sub)
+	err = sub.Connect(fmt.Sprintf("tcp://%s:28332", host))
 	if err != nil {
 		slog.Error("Could not connect to socket: ", "Error", err.Error())
-		// can add a retry logic here
+		return
+	}
+	fmt.Println("Connected to socket: ", sub)
+
+	if err := sub.SetSubscribe("hashblock"); err != nil {
+		fmt.Println("Could not set subscribe: ", err)
+	}
+	if err := sub.SetRcvtimeo(1 * time.Second); err != nil {
+		slog.Error("Could not set receive timeout: ", "Error", err.Error())
 		return
 	}
 
-	if err := sub.SetSubscribe("rawtx"); err != nil {
-		fmt.Println("Could not set subscribe: ", err)
-	}
-
 	for {
-		fmt.Println("Waiting for message...")
-		msg, _ := sub.RecvMessageBytes(0)
-		var trx wire.MsgTx
-
-		if err := trx.Deserialize(bytes.NewReader(msg[1])); err != nil {
-			slog.Error("Error deserializing transaction", "error", err.Error())
+		select {
+		case <-ctx.Done():
+			fmt.Println("Context done, exiting listener")
 			return
-		}
-
-		_, err := os.Stat("transaction.json")
-		if err != nil {
-			if os.IsNotExist(err) {
-				os.Create("transaction.json")
+		default:
+			fmt.Println("Waiting for message...")
+			msg, err := sub.RecvMessageBytes(0)
+			if err != nil {
+				continue
 			}
+			var block wire.MsgBlock
+
+			if err := block.Deserialize(bytes.NewReader(msg[1])); err != nil {
+				slog.Error("Error deserializing transaction", "error", err.Error())
+
+			}
+			_, err = os.Stat("transaction.json")
+			if err != nil {
+				if os.IsNotExist(err) {
+					os.Create("transaction.json")
+				}
+			}
+			f, _ := os.OpenFile("transaction.json", os.O_RDWR|os.O_APPEND, 0644)
+			defer f.Close()
+			var d []byte
+			f.Read(d)
+
+			io := bufio.NewWriter(f)
+			json.NewEncoder(io).Encode(&block)
+
+			io.WriteString(",")
+			io.Flush()
+
+			jsonBytes, err := json.MarshalIndent(block, "", "  ")
+			if err != nil {
+				slog.Error("Error marshaling transaction", "error", err.Error())
+				return
+			}
+			fmt.Printf("Parsed Transaction:\n%s\n", string(jsonBytes))
+
 		}
-		f, _ := os.OpenFile("transaction.json", os.O_RDWR|os.O_APPEND, 0644)
-		defer f.Close()
-		var d []byte
-		f.Read(d)
-
-		io := bufio.NewWriter(f)
-		json.NewEncoder(io).Encode(&trx)
-
-		io.WriteString(",")
-		io.Flush()
-
-		jsonBytes, err := json.MarshalIndent(trx, "", "  ")
-		if err != nil {
-			slog.Error("Error marshaling transaction", "error", err.Error())
-			return
-		}
-		fmt.Printf("Parsed Transaction:\n%s\n", string(jsonBytes))
 	}
 }
