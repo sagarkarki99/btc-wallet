@@ -17,7 +17,7 @@ import (
 )
 
 type Keychain interface {
-	GenerateAddress() (string, error)
+	GenerateAddress() (*btcutil.AddressPubKey, error)
 	SignTransaction() string
 }
 
@@ -31,13 +31,13 @@ func NewKeychain() Keychain {
 	}
 }
 
-func (kc *KeychainImpl) GenerateAddress() (string, error) {
+func (kc *KeychainImpl) GenerateAddress() (*btcutil.AddressPubKey, error) {
 	pk, _ := kc.generatePrivateKey()
 	pubKey, _ := kc.generatePublicKey(pk)
-	addr, err := btcutil.NewAddressPubKey(pubKey, &chaincfg.MainNetParams)
+	addr, err := btcutil.NewAddressPubKey(pubKey, &chaincfg.RegressionNetParams)
 	if err != nil {
 		fmt.Println("Error creating address : ", err)
-		return "", errors.New("error generating address")
+		return nil, errors.New("error generating address")
 	}
 
 	kc.kr.Save(&db.KeyAddress{
@@ -45,7 +45,7 @@ func (kc *KeychainImpl) GenerateAddress() (string, error) {
 		PublicKey:  hex.EncodeToString(pubKey),
 	})
 
-	return addr.EncodeAddress(), nil
+	return addr, nil
 	// if err != nil {
 	// 	fmt.Printf("error generating private key: %v", err)
 	// 	return ""

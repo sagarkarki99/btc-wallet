@@ -1,12 +1,14 @@
 package wallet
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/sagarkarki99/db"
 	"github.com/sagarkarki99/internal/blockchain"
 	"github.com/sagarkarki99/internal/keychain"
@@ -61,15 +63,25 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	}
 
 	w := db.Wallet{
-		Address: addr,
+		Address: addr.String(),
 		UserId:  userId,
 	}
 	ws.repo.Save(w)
 	return w.Address
 }
 
-func (ws *WalletServiceImpl) getDescriptorPayload(addr string) ([]byte, error) {
-	data, err := blockchain.Query("getdescriptorinfo", []interface{}{"addr(" + addr + ")"})
+func (ws *WalletServiceImpl) getDescriptorPayload(addr *btcutil.AddressPubKey) ([]byte, error) {
+	uncompressedPubKey := addr.PubKey().SerializeUncompressed()
+	compressedPubKey := addr.PubKey().SerializeCompressed()
+	slog.Info("Key information",
+		"UncompressedPubKey", hex.EncodeToString(uncompressedPubKey),
+		"UncompressedByte", len(uncompressedPubKey),
+		"compressedByte", len(compressedPubKey),
+		"CompressedPubKey", hex.EncodeToString(compressedPubKey),
+		"Address", addr.AddressPubKeyHash().String(),
+		"EncodedAddress", addr.EncodeAddress(),
+	)
+	data, err := blockchain.Query("getdescriptorinfo", []interface{}{"addr(" + addr.EncodeAddress() + ")"})
 	if err != nil {
 		return nil, err
 	}
