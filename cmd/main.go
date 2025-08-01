@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/rand"
+	"strconv"
+	"time"
+
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -31,8 +35,16 @@ func RunApp() {
 	fmt.Println("Welcome to your bitcoin wallet., ")
 	kc := keychain.NewKeychain()
 	ws := wallet.NewWalletService(kc)
-	addr := ws.GetDepositAddress("11")
+
+	// Seed the random number generator with current time
+	rand.Seed(time.Now().UnixNano())
+
+	// Generate random number between 0 and 99
+	num := strconv.Itoa(rand.Intn(100))
+	fmt.Println("Generating a new deposit address for user ID: ", num)
+	addr := ws.GetDepositAddress(num)
 	fmt.Println("Deposit Address: ", addr)
+
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/wallet/deposit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

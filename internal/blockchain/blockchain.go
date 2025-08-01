@@ -18,12 +18,15 @@ import (
 )
 
 type RPCClientManager struct {
-	config    *rpcclient.ConnConfig
-	endpoints map[string]string
+	config *rpcclient.ConnConfig
+	Host   string
+	Port   string
 }
 
+var activeWallet = "external_wallet"
+
 func (cm *RPCClientManager) GetClient(walletname string) *rpcclient.Client {
-	if cm.endpoints[walletname] == "" {
+	if activeWallet == "" {
 		conn, err := rpcclient.New(cm.config, nil)
 		if err != nil {
 			slog.Error("Failed to connect to Bitcoin node: %v", "Error", err.Error())
@@ -33,7 +36,8 @@ func (cm *RPCClientManager) GetClient(walletname string) *rpcclient.Client {
 		return conn
 	}
 	config := cm.config
-	config.Host = fmt.Sprintf("%s/wallet/%s", cm.config.Host, cm.endpoints[walletname])
+	config.Host = fmt.Sprintf("%s:%s/wallet/%s", cm.Host, cm.Port, activeWallet)
+	slog.Info("Config", "Host", config.Host)
 	conn, _ := rpcclient.New(config, nil)
 	return conn
 
@@ -61,10 +65,8 @@ func Start(ctx context.Context) {
 
 	rpcManager = &RPCClientManager{
 		config: &connConfig,
-		endpoints: map[string]string{
-			"mywallets":         "mywallets",
-			"descriptorwallets": "descriptorwallets",
-		},
+		Host:   host,
+		Port:   port,
 	}
 
 	response, err := rpcManager.GetClient("").RawRequest("getblockchaininfo", nil)
@@ -81,7 +83,7 @@ func Start(ctx context.Context) {
 
 func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
 
-	res, err := rpcManager.GetClient("descriptorwallet").RawRequest(rpcMethod, []json.RawMessage{data})
+	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, []json.RawMessage{data})
 	return &res, err
 }
 
@@ -95,7 +97,7 @@ func Query(rpcMethod string, params []interface{}) (*json.RawMessage, error) {
 		}
 		jsonParams[i] = jsonBytes
 	}
-	res, err := rpcManager.GetClient("").RawRequest(rpcMethod, jsonParams)
+	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, jsonParams)
 	return &res, err
 }
 
@@ -122,13 +124,13 @@ func listenToNode(ctx context.Context) {
 		return
 	}
 
+	fmt.Println("Waiting for message...")
 	for {
 		select {
 		case <-ctx.Done():
 			fmt.Println("Context done, exiting listener")
 			return
 		default:
-			fmt.Println("Waiting for message...")
 			msg, err := sub.RecvMessageBytes(0)
 			if err != nil {
 				continue
