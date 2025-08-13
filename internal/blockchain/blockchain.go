@@ -17,6 +17,14 @@ import (
 	"github.com/pebbe/zmq4"
 )
 
+var (
+	Regtest = "regtest"
+	Testnet = "testnet3"
+	Mainnet = "mainnet"
+)
+
+var Network = "regtest"
+
 type RPCClientManager struct {
 	config *rpcclient.ConnConfig
 	Host   string

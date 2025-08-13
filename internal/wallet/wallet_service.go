@@ -1,7 +1,6 @@
 package wallet
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"os"
 
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sagarkarki99/db"
 	"github.com/sagarkarki99/internal/blockchain"
 	"github.com/sagarkarki99/internal/keychain"
@@ -46,12 +47,14 @@ type WalletServiceImpl struct {
 }
 
 func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
+
 	wallet, _ := ws.repo.Get(userId)
 	if wallet != nil {
 		return wallet.Address
 	}
-	addr, _ := ws.kc.GenerateAddress()
-	payload, err := ws.getDescriptorPayload(addr)
+	addrInfo, _ := ws.kc.GenerateAddress(23)
+
+	payload, err := ws.getDescriptorPayload(addrInfo)
 
 	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
 	if e != nil {
@@ -62,26 +65,28 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 		fmt.Println("Error getting wallet : ", err)
 	}
 
+	extKey, _ := hdkeychain.NewKeyFromString(addrInfo.Xpub)
+
+	childKey, err := extKey.Derive(0)
+	if err != nil {
+		slog.Error("Error deriving child key", "error", err)
+	}
+
+	pKey, _ := childKey.ECPubKey()
+	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.RegressionNetParams)
+
 	w := db.Wallet{
-		Address: addr.String(),
+		Address: address.EncodeAddress(),
 		UserId:  userId,
 	}
 	ws.repo.Save(w)
 	return w.Address
 }
 
-func (ws *WalletServiceImpl) getDescriptorPayload(addr *btcutil.AddressPubKey) ([]byte, error) {
-	uncompressedPubKey := addr.PubKey().SerializeUncompressed()
-	compressedPubKey := addr.PubKey().SerializeCompressed()
-	slog.Info("Key information",
-		"UncompressedPubKey", hex.EncodeToString(uncompressedPubKey),
-		"UncompressedByte", len(uncompressedPubKey),
-		"compressedByte", len(compressedPubKey),
-		"CompressedPubKey", hex.EncodeToString(compressedPubKey),
-		"Address", addr.AddressPubKeyHash().String(),
-		"EncodedAddress", addr.EncodeAddress(),
-	)
-	data, err := blockchain.Query("getdescriptorinfo", []interface{}{"addr(" + addr.EncodeAddress() + ")"})
+func (ws *WalletServiceImpl) getDescriptorPayload(addr *keychain.AddressInfo) ([]byte, error) {
+
+	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/1/*)", addr.Fingerprint, addr.Xpub)
+	data, err := blockchain.Query("getdescriptorinfo", []interface{}{p})
 	if err != nil {
 		return nil, err
 	}
@@ -89,11 +94,12 @@ func (ws *WalletServiceImpl) getDescriptorPayload(addr *btcutil.AddressPubKey) (
 	r, _ := data.MarshalJSON()
 
 	json.Unmarshal(r, &dataMap)
-	des := fmt.Sprintf("addr(%s)#%s", addr, dataMap["checksum"].(string))
+	des := fmt.Sprintf("%s#%s", p, dataMap["checksum"].(string))
 	payload := map[string]interface{}{
 		"desc":      des,
 		"timestamp": "now",
 		"watchonly": true,
+		"range":     []int{0, 1000},
 	}
 	payloadBytes, err := json.Marshal([]interface{}{payload})
 	if err != nil {
