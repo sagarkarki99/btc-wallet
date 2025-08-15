@@ -42,6 +42,7 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 
 	purposeKey, _ := masterKey.Derive(hdkeychain.HardenedKeyStart + 84)
 	// Derive the coin type key for Bitcoin (0 for mainnet, 1 for testnet)
+	// TODO: Refactor the hard coded coin type to be dynamic
 	coinTypeKey, _ := purposeKey.Derive(hdkeychain.HardenedKeyStart + 0)
 
 	// Path: m/84'/1'/0'
@@ -107,7 +108,7 @@ func (kc *KeychainImpl) getMasterKey() (*hdkeychain.ExtendedKey, error) {
 	pk := getSeed()
 	fmt.Println("Size: ", len(pk))
 
-	masterKey, err := hdkeychain.NewMaster(pk, &chaincfg.MainNetParams)
+	masterKey, err := hdkeychain.NewMaster(pk, &chaincfg.RegressionNetParams)
 	if err != nil {
 		fmt.Println("Error creating master key: ", err)
 		return nil, ErrGeneratingKey

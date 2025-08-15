@@ -54,18 +54,14 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 		return wallet.Address
 	}
 
-	// This will be an accountId
+	// This will be an accountId (can be based on userId )
 	addrInfo, _ := ws.kc.GenerateAddress(0)
 
-	payload, err := ws.getDescriptorPayload(addrInfo)
+	payload, _ := ws.getDescriptorPayload(addrInfo)
 
 	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
 	if e != nil {
 		slog.Error("Error importing address", "error", e)
-	}
-
-	if err != nil {
-		fmt.Println("Error getting wallet : ", err)
 	}
 
 	extKey, _ := hdkeychain.NewKeyFromString(addrInfo.Xpub)
@@ -85,24 +81,21 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	}
 
 	pKey, _ := childKey.ECPubKey()
-	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.MainNetParams)
+	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.RegressionNetParams)
 
-	xChildPub, _ := childKey.Neuter()
-	childPub, _ := xChildPub.ECPubKey()
-	fmt.Println("Child Key Public Key:", xChildPub.String())
+	childPub, _ := childKey.ECPubKey()
 
 	// Address at 0 index
-	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), &chaincfg.MainNetParams)
-	fmt.Println("Address ( m/84h/0h/0h/0/0): ", addr.EncodeAddress())
+	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	fmt.Println("Address ( m/84h/1h/0h/0/0): ", addr.EncodeAddress())
 	fmt.Println("--------------------------------")
 	childKey1, _ := changeKey.Derive(1)
 
-	xChildPub1, _ := childKey1.Neuter()
-	childPub1, _ := xChildPub1.ECPubKey()
+	childPub1, _ := childKey1.ECPubKey()
 	fmt.Println("Child Key Public Key:", hex.EncodeToString(childPub1.SerializeCompressed()))
-	fmt.Println("Child Key Public Key EXTENDED:", xChildPub1.String())
-	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), &chaincfg.MainNetParams)
-	fmt.Println("Address ( m/84h/0h/0h/0/1): ", addr2.EncodeAddress())
+	fmt.Println("Child Key Public Key EXTENDED:", childKey1.String())
+	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	fmt.Println("Address ( m/84h/1h/0h/0/1): ", addr2.EncodeAddress())
 
 	w := db.Wallet{
 		Address: address.EncodeAddress(),
