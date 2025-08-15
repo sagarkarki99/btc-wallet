@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +53,9 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	if wallet != nil {
 		return wallet.Address
 	}
-	addrInfo, _ := ws.kc.GenerateAddress(23)
+
+	// This will be an accountId
+	addrInfo, _ := ws.kc.GenerateAddress(0)
 
 	payload, err := ws.getDescriptorPayload(addrInfo)
 
@@ -67,13 +70,39 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 
 	extKey, _ := hdkeychain.NewKeyFromString(addrInfo.Xpub)
 
-	childKey, err := extKey.Derive(0)
+	// We received m/84h/0h/0h from addressInfo.
+	// Adding change type (0 for external, 1 for internal)
+	//Path: m/84h/0h/0h/0
+	changeKey, _ := extKey.Derive(0)
+
+	// Adding index for address generation (0,1,2...)
+	//Path: m/84h/0h/0h/0/0
+
+	// we need to import m/84h/0h/0h/xpub/0/* to the node.
+	childKey, err := changeKey.Derive(0)
 	if err != nil {
 		slog.Error("Error deriving child key", "error", err)
 	}
 
 	pKey, _ := childKey.ECPubKey()
-	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.MainNetParams)
+
+	xChildPub, _ := childKey.Neuter()
+	childPub, _ := xChildPub.ECPubKey()
+	fmt.Println("Child Key Public Key:", xChildPub.String())
+
+	// Address at 0 index
+	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), &chaincfg.MainNetParams)
+	fmt.Println("Address ( m/84h/0h/0h/0/0): ", addr.EncodeAddress())
+	fmt.Println("--------------------------------")
+	childKey1, _ := changeKey.Derive(1)
+
+	xChildPub1, _ := childKey1.Neuter()
+	childPub1, _ := xChildPub1.ECPubKey()
+	fmt.Println("Child Key Public Key:", hex.EncodeToString(childPub1.SerializeCompressed()))
+	fmt.Println("Child Key Public Key EXTENDED:", xChildPub1.String())
+	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), &chaincfg.MainNetParams)
+	fmt.Println("Address ( m/84h/0h/0h/0/1): ", addr2.EncodeAddress())
 
 	w := db.Wallet{
 		Address: address.EncodeAddress(),
@@ -85,7 +114,7 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 
 func (ws *WalletServiceImpl) getDescriptorPayload(addr *keychain.AddressInfo) ([]byte, error) {
 
-	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/1/*)", addr.Fingerprint, addr.Xpub)
+	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/0/*)", addr.Fingerprint, addr.Xpub)
 	data, err := blockchain.Query("getdescriptorinfo", []interface{}{p})
 	if err != nil {
 		return nil, err

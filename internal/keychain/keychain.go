@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcutil/base58"
-	"github.com/btcsuite/btcd/btcutil/bech32"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sagarkarki99/db"
@@ -38,56 +35,37 @@ func NewKeychain() Keychain {
 
 func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) {
 	masterKey, _ := kc.getMasterKey()
-	mpvk, _ := masterKey.ECPrivKey()
-	mPubKey, _ := masterKey.Neuter()
-	fmt.Println("Master Key Private Key:", mpvk.Key.String())
+	mPubKey, _ := masterKey.Neuter() // Get the extended public key
 	fmt.Println("Master Key Public Key:", mPubKey.String())
 
 	fmt.Println("--------------------------")
 
 	purposeKey, _ := masterKey.Derive(hdkeychain.HardenedKeyStart + 84)
-	ppvk, _ := purposeKey.ECPrivKey()
-	pPubKey, _ := purposeKey.Neuter()
-	fmt.Println("PurposeKey Key private Key:", ppvk.Key.String())
-	fmt.Println("PurposeKey Key Public Key:", pPubKey.String())
-	fmt.Println("--------------------------")
-
-	// Derive the coin type key for Bitcoin (1 for mainnet, 0 for testnet)
-	coinTypeKey, _ := purposeKey.Derive(hdkeychain.HardenedKeyStart + 1)
-	ctk, _ := coinTypeKey.ECPrivKey()
-	cPubKey, _ := coinTypeKey.Neuter()
-	fmt.Println("Cointype Key private Key:", ctk.Key.String())
-	fmt.Println("Cointype Key Public Key:", cPubKey.String())
-	fmt.Println("--------------------------")
+	// Derive the coin type key for Bitcoin (0 for mainnet, 1 for testnet)
+	coinTypeKey, _ := purposeKey.Derive(hdkeychain.HardenedKeyStart + 0)
 
 	// Path: m/84'/1'/0'
 	// This is the account level. You would use a new index for each account (0, 1, 2...).
 	// This is the extended private key you would store for the user.
 	// Derive the account key (0 for the first account)
 	// This should be incrmental.
-	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + uint32(accountId))
+	//TODO: Refactor the hard coded account index to be dynamic
+	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + uint32(0))
 	if err != nil {
 		return nil, ErrGeneratingKey
 	}
 
+	// save xpriv key of accountKey
+	// this is the account level keys: (private and public)
+	// To sign the transactions for this account, extended private key is required.
+
 	pvk, _ := accountKey.ECPrivKey()
 	xpub, _ := accountKey.Neuter()
-
+	fmt.Println("Is Private: ", accountKey.IsPrivate())
 	fmt.Println("Account Key Private Key:", pvk.Key.String())
 	fmt.Println("Account Key Public Key:", xpub.String())
 
-	pub, _ := accountKey.ECPubKey()
-
-	pubKeyBytes := pub.SerializeCompressed()
-	shahash := sha256.Sum256(pubKeyBytes)
-	ripeHasher := ripemd160.New()
-	ripeHasher.Write(shahash[:])
-	hashedRIPEMD160 := ripeHasher.Sum(nil)
-	fingerprintBytes := hashedRIPEMD160[:4]
-
-	fingerPrint := hex.EncodeToString(fingerprintBytes)
-	fmt.Println("Fingerprint: ", fingerPrint)
-	fmt.Println("xPub Key parent fingerprint: ", xpub.ParentFingerprint())
+	fp := kc.getMasterkeyFingerprint(masterKey)
 
 	kc.kr.Save(&db.KeyAddress{
 		PrivateKey: pvk.Key.String(),
@@ -95,80 +73,28 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 	})
 
 	return &AddressInfo{
-		Fingerprint: fingerPrint,
+		Fingerprint: fp,
 		Xpub:        xpub.String(),
 	}, nil
-	// if err != nil {
-	// 	fmt.Printf("error generating private key: %v", err)
-	// 	return ""
-	// }
 
-	// pubKey, err := kc.generatePublicKey(pk)
-	// if err != nil {
-	// 	fmt.Printf("error generating public key: %v", err)
-	// 	return ""
-	// }
-	// fmt.Println(pubKey)
+}
 
-	// // hash it with sha256
-	// hashed256 := sha256.Sum256(pubKey)
+func (*KeychainImpl) getMasterkeyFingerprint(masterKey *hdkeychain.ExtendedKey) string {
+	pub, _ := masterKey.ECPubKey()
 
-	// // hash it with ripemd160
-	// ripeHasher := ripemd160.New()
-	// ripeHasher.Write(hashed256[:])
-	// hashedRIPEMD160 := ripeHasher.Sum(nil)
-
-	// modernAddress := segWitAddress(hashedRIPEMD160)
-
-	// keys := &db.KeyAddress{
-	// 	PrivateKey: hex.EncodeToString(pk),
-	// 	PublicKey:  hex.EncodeToString(pubKey),
-	// }
-	// _, err = kc.kr.Save(keys)
-	// if err != nil {
-	// 	fmt.Println("Error saving wallet : ", err)
-	// }
-	// return modernAddress
+	pubKeyBytes := pub.SerializeCompressed()
+	shahash := sha256.Sum256(pubKeyBytes)
+	ripeHasher := ripemd160.New()
+	ripeHasher.Write(shahash[:])
+	hashedRIPEMD160 := ripeHasher.Sum(nil)
+	fingerprintBytes := hashedRIPEMD160[:4]
+	fingerPrint := hex.EncodeToString(fingerprintBytes)
+	return fingerPrint
 }
 
 func (kc *KeychainImpl) SignTransaction() string {
 	// sign the transcation from here. Receive a transaction payload to this.
 	return "signed transaction"
-}
-
-func segWitAddress(hashedRIPEMD160 []byte) string {
-
-	bec32bytes, err := bech32.ConvertBits(hashedRIPEMD160, 8, 5, true)
-	if err != nil {
-		fmt.Println("Error converting bits : ", err)
-	}
-	bytesWithVersion := append([]byte{0}, bec32bytes...)
-	address, _ := bech32.Encode("tb", bytesWithVersion)
-	return address
-
-}
-
-func p2pkhAddress(hashedRIPEMD160 []byte) string {
-	//versioning the hash
-	versionedhash := append([]byte{0x00}, hashedRIPEMD160...)
-	singleHashed := sha256.Sum256(versionedhash)
-	doubleHashed := sha256.Sum256(singleHashed[:])
-
-	// adding checksum
-	firstFourBytes := doubleHashed[:4]
-	finalHash := append(versionedhash, firstFourBytes...)
-	fmt.Println("Final hash length : ", len(finalHash))
-
-	// Encode with base58
-	finalAddress := base58.Encode(finalHash)
-	fmt.Println("Final Address : ", finalAddress)
-	return finalAddress
-}
-
-func (kc *KeychainImpl) generatePublicKey(pk []byte) ([]byte, error) {
-	_, pubKey := btcec.PrivKeyFromBytes(pk)
-
-	return pubKey.SerializeCompressed(), nil
 }
 
 func (kc *KeychainImpl) getMasterKey() (*hdkeychain.ExtendedKey, error) {
@@ -181,7 +107,7 @@ func (kc *KeychainImpl) getMasterKey() (*hdkeychain.ExtendedKey, error) {
 	pk := getSeed()
 	fmt.Println("Size: ", len(pk))
 
-	masterKey, err := hdkeychain.NewMaster(pk, &chaincfg.RegressionNetParams)
+	masterKey, err := hdkeychain.NewMaster(pk, &chaincfg.MainNetParams)
 	if err != nil {
 		fmt.Println("Error creating master key: ", err)
 		return nil, ErrGeneratingKey
