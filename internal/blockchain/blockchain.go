@@ -90,8 +90,12 @@ func Start(ctx context.Context) {
 }
 
 func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
-
-	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, []json.RawMessage{data})
+	jsonParam, err := json.Marshal(string(data))
+	if err != nil {
+		return nil, err
+	}
+	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, []json.RawMessage{jsonParam})
+	json.NewEncoder(os.Stdout).Encode(res)
 	return &res, err
 }
 

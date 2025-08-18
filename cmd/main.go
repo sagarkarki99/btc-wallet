@@ -109,6 +109,7 @@ func RunApp() {
 		if err := ws.SendToAddress(requestBody.UserId, requestBody.Amount, requestBody.SenderAddress); err != nil {
 			res := `{"message": "Failed to send transaction",error: "` + err.Error() + `"}`
 			writeResponse(w, []byte(res), http.StatusBadRequest)
+			return
 		}
 
 		writeResponse(w, []byte(`{"message":"Your transaction is sent to blockchain"}`), http.StatusOK)

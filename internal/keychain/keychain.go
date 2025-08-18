@@ -69,7 +69,7 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 	fp := kc.getMasterkeyFingerprint(masterKey)
 
 	kc.kr.Save(&db.KeyAddress{
-		PrivateKey: pvk.Key.String(),
+		PrivateKey: accountKey.String(),
 		PublicKey:  xpub.String(),
 	})
 
