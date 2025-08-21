@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/joho/godotenv"
@@ -24,6 +25,10 @@ var (
 )
 
 var Network = "regtest"
+
+func GetNetworkParams() *chaincfg.Params {
+	return &chaincfg.RegressionNetParams
+}
 
 type RPCClientManager struct {
 	config *rpcclient.ConnConfig

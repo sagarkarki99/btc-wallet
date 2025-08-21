@@ -12,7 +12,6 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -86,12 +85,12 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	}
 
 	pKey, _ := childKey.ECPubKey()
-	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), blockchain.GetNetworkParams())
 
 	childPub, _ := childKey.ECPubKey()
 
 	// Address at 0 index
-	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), blockchain.GetNetworkParams())
 	fmt.Println("Address ( m/84h/1h/0h/0/0): ", addr.EncodeAddress())
 	fmt.Println("--------------------------------")
 	childKey1, _ := changeKey.Derive(1)
@@ -99,7 +98,7 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	childPub1, _ := childKey1.ECPubKey()
 	fmt.Println("Child Key Public Key:", hex.EncodeToString(childPub1.SerializeCompressed()))
 	fmt.Println("Child Key Public Key EXTENDED:", childKey1.String())
-	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), &chaincfg.RegressionNetParams)
+	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), blockchain.GetNetworkParams())
 	fmt.Println("Address ( m/84h/1h/0h/0/1): ", addr2.EncodeAddress())
 
 	w := db.Wallet{
@@ -190,7 +189,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destin
 	tx.AddTxIn(inp)
 
 	// create Sender output
-	dAddr, _ := btcutil.DecodeAddress(destinationAddress, &chaincfg.RegressionNetParams)
+	dAddr, _ := btcutil.DecodeAddress(destinationAddress, blockchain.GetNetworkParams())
 	pubScript, err := txscript.PayToAddrScript(dAddr)
 	if err != nil {
 		return err
@@ -201,7 +200,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destin
 	// create change output if any
 	fee := int64(1000)
 	changeAmount := utxoAmountInSatoshi - amountInSatoshi - fee
-	changeAddr, _ := btcutil.DecodeAddress(sender.Address, &chaincfg.RegressionNetParams)
+	changeAddr, _ := btcutil.DecodeAddress(sender.Address, blockchain.GetNetworkParams())
 	if changeAmount > 0 {
 		changeScript, err := txscript.PayToAddrScript(changeAddr)
 		if err != nil {

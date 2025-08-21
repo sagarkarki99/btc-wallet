@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sagarkarki99/db"
+	"github.com/sagarkarki99/internal/blockchain"
 	repo "github.com/sagarkarki99/internal/repository"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -108,7 +108,7 @@ func (kc *KeychainImpl) getMasterKey() (*hdkeychain.ExtendedKey, error) {
 	pk := getSeed()
 	fmt.Println("Size: ", len(pk))
 
-	masterKey, err := hdkeychain.NewMaster(pk, &chaincfg.RegressionNetParams)
+	masterKey, err := hdkeychain.NewMaster(pk, blockchain.GetNetworkParams())
 	if err != nil {
 		fmt.Println("Error creating master key: ", err)
 		return nil, ErrGeneratingKey
