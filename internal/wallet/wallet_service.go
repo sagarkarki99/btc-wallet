@@ -34,9 +34,9 @@ type Utxo struct {
 }
 
 type WalletService interface {
-	GetDepositAddress(userId string) string
+	GetDepositAddress(userId int) string
 	GetBalance(addr string) float64
-	SendToAddress(userId string, amount float64, destinationAddress string) error
+	SendToAddress(userId int, amount float64, destinationAddress string) error
 }
 
 func NewWalletService(kc keychain.Keychain) WalletService {
@@ -51,24 +51,45 @@ type WalletServiceImpl struct {
 	kc   keychain.Keychain
 }
 
-func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
+func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
+	var address *db.Address
+	var account *db.Account
+	account, _ = ws.repo.GetAccount(userId)
+	if account == nil {
+		ai, err := ws.kc.GenerateAddress(uint32(userId))
+		if err != nil {
+			return ""
+		}
 
-	wallet, _ := ws.repo.Get(userId)
-	if wallet != nil {
-		return wallet.Address
+		a := &db.Account{
+			XpubKey:     ai.Xpub,
+			Fingerprint: ai.Fingerprint,
+		}
+
+		id, err := ws.repo.SaveAccount(*a)
+		if err != nil {
+			return ""
+		}
+		account = a
+		account.Id = id
+
+		address = &db.Address{
+			Index:     0,
+			NextIndex: 1,
+			AccountId: account.Id,
+		}
 	}
 
-	// This will be an accountId (can be based on userId )
-	addrInfo, _ := ws.kc.GenerateAddress(0)
-
-	payload, _ := ws.getDescriptorPayload(addrInfo)
-
-	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
-	if e != nil {
-		slog.Error("Error importing address", "error", e)
+	if address == nil {
+		add, _ := ws.repo.GetAddress(account.Id)
+		address = &db.Address{
+			Index:     add.NextIndex,
+			NextIndex: add.NextIndex + 1,
+			AccountId: add.AccountId,
+		}
 	}
 
-	extKey, _ := hdkeychain.NewKeyFromString(addrInfo.Xpub)
+	extKey, _ := hdkeychain.NewKeyFromString(account.XpubKey)
 
 	// We received m/84h/0h/0h from addressInfo.
 	// Adding change type (0 for external, 1 for internal)
@@ -79,39 +100,33 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId string) string {
 	//Path: m/84h/0h/0h/0/0
 
 	// we need to import m/84h/0h/0h/xpub/0/* to the node.
-	childKey, err := changeKey.Derive(0)
+	childKey, err := changeKey.Derive(uint32(address.Index))
 	if err != nil {
 		slog.Error("Error deriving child key", "error", err)
 	}
 
-	pKey, _ := childKey.ECPubKey()
-	address, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(pKey.SerializeCompressed()), blockchain.GetNetworkParams())
-
 	childPub, _ := childKey.ECPubKey()
 
-	// Address at 0 index
 	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), blockchain.GetNetworkParams())
-	fmt.Println("Address ( m/84h/1h/0h/0/0): ", addr.EncodeAddress())
+	fmt.Printf("Address ( m/84h/1h/%dh/0/%d): %s", address.AccountId, address.Index, addr.EncodeAddress())
 	fmt.Println("--------------------------------")
-	childKey1, _ := changeKey.Derive(1)
+	address.Hash = addr.EncodeAddress()
 
-	childPub1, _ := childKey1.ECPubKey()
-	fmt.Println("Child Key Public Key:", hex.EncodeToString(childPub1.SerializeCompressed()))
-	fmt.Println("Child Key Public Key EXTENDED:", childKey1.String())
-	addr2, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub1.SerializeCompressed()), blockchain.GetNetworkParams())
-	fmt.Println("Address ( m/84h/1h/0h/0/1): ", addr2.EncodeAddress())
+	payload, _ := ws.getDescriptorPayload(account.Fingerprint, account.XpubKey)
 
-	w := db.Wallet{
-		Address: address.EncodeAddress(),
-		UserId:  userId,
+	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
+	if e != nil {
+		slog.Error("Error importing address", "error", e)
 	}
-	ws.repo.Save(w)
-	return w.Address
+
+	ws.repo.SaveAddress(*address)
+
+	return address.Hash
 }
 
-func (ws *WalletServiceImpl) getDescriptorPayload(addr *keychain.AddressInfo) ([]byte, error) {
+func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) ([]byte, error) {
 
-	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/0/*)", addr.Fingerprint, addr.Xpub)
+	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/0/*)", fp, xpub)
 	data, err := blockchain.Query("getdescriptorinfo", []interface{}{p})
 	if err != nil {
 		return nil, err
@@ -160,13 +175,13 @@ func (*WalletServiceImpl) getUTXOs(addr string) (utxo *Utxo, err error) {
 	return utxo, nil
 }
 
-func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destinationAddress string) error {
-	sender, err := ws.repo.Get(userId)
+func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinationAddress string) error {
+	sender, err := ws.repo.GetAddress(userId)
 	if err != nil {
 		return errors.New("user do not have any wallet")
 	}
-	fmt.Println("Sender Address: ", sender.Address)
-	u, err := ws.getUTXOs(sender.Address)
+	fmt.Println("Sender Address: ", sender.Hash)
+	u, err := ws.getUTXOs(sender.Hash)
 	if err != nil {
 		fmt.Println("Error getting UTXOs: ", err)
 		return err
@@ -200,7 +215,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId string, amount float64, destin
 	// create change output if any
 	fee := int64(1000)
 	changeAmount := utxoAmountInSatoshi - amountInSatoshi - fee
-	changeAddr, _ := btcutil.DecodeAddress(sender.Address, blockchain.GetNetworkParams())
+	changeAddr, _ := btcutil.DecodeAddress(sender.Hash, blockchain.GetNetworkParams())
 	if changeAmount > 0 {
 		changeScript, err := txscript.PayToAddrScript(changeAddr)
 		if err != nil {

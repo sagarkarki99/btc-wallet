@@ -51,7 +51,7 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 	// Derive the account key (0 for the first account)
 	// This should be incrmental.
 	//TODO: Refactor the hard coded account index to be dynamic
-	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + uint32(0))
+	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + accountId)
 	if err != nil {
 		return nil, ErrGeneratingKey
 	}

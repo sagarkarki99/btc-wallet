@@ -1,12 +1,14 @@
 CREATE TABLE IF NOT EXISTS account (
     id SERIAL PRIMARY KEY,
     xpub VARCHAR(255) NOT NULL,
+    fingerprint VARCHAR(64) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS addresses (
+CREATE TABLE IF NOT EXISTS address (
     id SERIAL PRIMARY KEY,
     addr_index INTEGER NOT NULL,
+    next_index INTEGER NOT NULL,
     account_id INTEGER REFERENCES account (id),
     address_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
