@@ -1,12 +1,13 @@
-CREATE TABLE IF NOT EXISTS wallets (
+CREATE TABLE IF NOT EXISTS account (
     id SERIAL PRIMARY KEY,
-    wallet_address VARCHAR(255) NOT NULL,
-    user_id VARCHAR(255) NOT NULL
+    xpub VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
-CREATE TABLE IF NOT EXISTS key_addresses (
+CREATE TABLE IF NOT EXISTS addresses (
     id SERIAL PRIMARY KEY,
-    private_key VARCHAR(255) NOT NULL,
-    public_key VARCHAR(255) NOT NULL
+    addr_index INTEGER NOT NULL,
+    account_id INTEGER REFERENCES account (id),
+    address_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
