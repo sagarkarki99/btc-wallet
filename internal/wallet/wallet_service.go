@@ -78,6 +78,13 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
 			NextIndex: 1,
 			AccountId: account.Id,
 		}
+
+		payload, _ := ws.getDescriptorPayload(account.Fingerprint, account.XpubKey)
+
+		_, e := blockchain.QueryFromBytes("importdescriptors", payload)
+		if e != nil {
+			slog.Error("Error importing address", "error", e)
+		}
 	}
 
 	if address == nil {
@@ -111,13 +118,6 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
 	fmt.Printf("Address ( m/84h/1h/%dh/0/%d): %s", address.AccountId, address.Index, addr.EncodeAddress())
 	fmt.Println("--------------------------------")
 	address.Hash = addr.EncodeAddress()
-
-	payload, _ := ws.getDescriptorPayload(account.Fingerprint, account.XpubKey)
-
-	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
-	if e != nil {
-		slog.Error("Error importing address", "error", e)
-	}
 
 	ws.repo.SaveAddress(*address)
 
