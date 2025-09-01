@@ -180,8 +180,9 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	if err != nil {
 		return errors.New("user do not have any wallet")
 	}
+	myAddress, _ := btcutil.DecodeAddress(sender.Hash, blockchain.GetNetworkParams())
 	fmt.Println("Sender Address: ", sender.Hash)
-	u, err := ws.getUTXOs(sender.Hash)
+	u, err := ws.getUTXOs(myAddress.EncodeAddress())
 	if err != nil {
 		fmt.Println("Error getting UTXOs: ", err)
 		return err
@@ -191,17 +192,34 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 		return fmt.Errorf("insufficient funds")
 	}
 
-	utxo := u.Inputs[0]
-	utxoAmountInSatoshi := int64(utxo.Amount * 1e8)
+	// utxo := u.Inputs[0]
+	// utxoAmountInSatoshi := int64(utxo.Amount * 1e8)
 	amountInSatoshi := int64(amount * 1e8)
 
 	tx := wire.NewMsgTx(wire.TxVersion)
 
 	// create Input
-	h, _ := chainhash.NewHashFromStr(utxo.Txid)
-	op := wire.NewOutPoint(h, uint32(utxo.Vout))
-	inp := wire.NewTxIn(op, []byte{}, nil)
-	tx.AddTxIn(inp)
+	var usedInputs []Input
+	totalAmount := int64(0)
+	pubKeyHash := btcutil.Hash160(getPrivKey(uint32(sender.Index)).PubKey().SerializeCompressed())
+	myScriptPubKey := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_0).
+		AddData(pubKeyHash).
+		Script()
+
+	for _, v := range u.Inputs {
+		h, _ := chainhash.NewHashFromStr(v.Txid)
+		if totalAmount >= amountInSatoshi {
+			// Need to do change and
+			break
+		}
+		usedInputs = append(usedInputs, v)
+		totalAmount += int64(v.Amount)
+		op := wire.NewOutPoint(h, uint32(v.Vout))
+		inp := wire.NewTxIn(op, []byte{}, nil)
+		tx.AddTxIn(inp)
+
+	}
 
 	// create Sender output
 	dAddr, _ := btcutil.DecodeAddress(destinationAddress, blockchain.GetNetworkParams())
@@ -214,10 +232,10 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 
 	// create change output if any
 	fee := int64(1000)
-	changeAmount := utxoAmountInSatoshi - amountInSatoshi - fee
-	changeAddr, _ := btcutil.DecodeAddress(sender.Hash, blockchain.GetNetworkParams())
+	changeAmount := totalAmount - amountInSatoshi - fee
+
 	if changeAmount > 0 {
-		changeScript, err := txscript.PayToAddrScript(changeAddr)
+		changeScript, err := txscript.PayToAddrScript(myAddress)
 		if err != nil {
 			return nil
 		}
@@ -226,23 +244,27 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	}
 
 	//create witness
-	myScriptPubKey, _ := txscript.PayToAddrScript(changeAddr)
-	fetcher := newPrevOutputFetcher(utxo.Txid, uint32(utxo.Vout), utxoAmountInSatoshi, myScriptPubKey)
-	txSig := txscript.NewTxSigHashes(tx, fetcher)
-	witness, err := txscript.WitnessSignature(tx, txSig, 0, utxoAmountInSatoshi, myScriptPubKey, txscript.SigHashAll, getPrivKey(), true)
-	if err != nil {
-		slog.Error("Error creating witness signature", "error", err)
-		return err
+	for i, v := range usedInputs {
+		// create witness for this input
+		fet := txscript.NewCannedPrevOutputFetcher(myScriptPubKey, int64(v.Amount))
+		// fetcher := newPrevOutputFetcher(utxo.Txid, uint32(utxo.Vout), utxoAmountInSatoshi, myScriptPubKey)
+		txSig := txscript.NewTxSigHashes(tx, fet)
+		witness, err := txscript.WitnessSignature(tx, txSig, i, int64(v.Amount), myScriptPubKey, txscript.SigHashAll, getPrivKey(uint32(sender.Index)), true)
+		if err != nil {
+			slog.Error("Error creating witness signature", "error", err)
+			return err
+		}
+		tx.TxIn[i].Witness = witness
+		engine, _ := txscript.NewEngine(myScriptPubKey, tx, v.Vout, txscript.StandardVerifyFlags, nil, nil, int64(v.Amount), fet)
+
+		if err := engine.Execute(); err != nil {
+			slog.Error("Error executing transaction script", "error", err)
+			return err
+		}
 	}
-
-	tx.TxIn[0].Witness = witness
-
 	// validate the trx
-	engine, _ := txscript.NewEngine(myScriptPubKey, tx, 0, txscript.StandardVerifyFlags, nil, nil, utxoAmountInSatoshi, fetcher)
-	if err := engine.Execute(); err != nil {
-		slog.Error("Error executing transaction script", "error", err)
-		return err
-	}
+	// fetcher := txscript.NewCannedPrevOutputFetcher(myScriptPubKey, int64(totalAmount))
+
 	buf := new(bytes.Buffer)
 	tx.Serialize(buf)
 	trxHex := hex.EncodeToString(buf.Bytes())
@@ -263,31 +285,30 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	return nil
 }
 
-func getPrivKey() *btcec.PrivateKey {
-	keyStr := "tprv8fQcvSh37DJNwDVDSFomfqe1aTJB7gtJuDd87B6xEjJmAG5GsVcxRVJevfK59crfZh8WyRNq87okPhMZQgEvgQtrjtvXAyS7t8FDqHCv1ZY"
+func getPrivKey(addressIndex uint32) *btcec.PrivateKey {
+	keyStr := "tprv8fQcvSh37DJP7fxSKvJKyZHxCsVX5m9tGpcM21H3WuBYnQERJhU8bhPEzDtanzkaPA9han5cxMt6PXxbqkqRKUMvGnKceQYuFzfHru15667"
 	extKey, _ := hdkeychain.NewKeyFromString(keyStr)
 	changeKey, _ := extKey.Derive(0)
 
-	childKey, _ := changeKey.Derive(0)
+	childKey, _ := changeKey.Derive((addressIndex))
 	privKey, _ := childKey.ECPrivKey()
 	return privKey
-
 }
 
-type prevOutputFetcher struct {
-	outputs map[wire.OutPoint]*wire.TxOut
-}
+// type prevOutputFetcher struct {
+// 	outputs map[wire.OutPoint]*wire.TxOut
+// }
 
-func (f *prevOutputFetcher) FetchPrevOutput(op wire.OutPoint) *wire.TxOut {
-	return f.outputs[op]
-}
+// func (f *prevOutputFetcher) FetchPrevOutput(op wire.OutPoint) *wire.TxOut {
+// 	return f.outputs[op]
+// }
 
-func newPrevOutputFetcher(txid string, vout uint32, amount int64, scriptPubKey []byte) *prevOutputFetcher {
-	hash, _ := chainhash.NewHashFromStr(txid)
-	op := wire.OutPoint{Hash: *hash, Index: vout}
-	return &prevOutputFetcher{
-		outputs: map[wire.OutPoint]*wire.TxOut{
-			op: wire.NewTxOut(amount, scriptPubKey),
-		},
-	}
-}
+// func newPrevOutputFetcher(txid string, vout uint32, amount int64, scriptPubKey []byte) *prevOutputFetcher {
+// 	hash, _ := chainhash.NewHashFromStr(txid)
+// 	op := wire.OutPoint{Hash: *hash, Index: vout}
+// 	return &prevOutputFetcher{
+// 		outputs: map[wire.OutPoint]*wire.TxOut{
+// 			op: wire.NewTxOut(amount, scriptPubKey),
+// 		},
+// 	}
+// }
