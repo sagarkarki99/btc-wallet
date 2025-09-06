@@ -28,6 +28,10 @@ type Input struct {
 	Vout         int     `json:"vout"`
 }
 
+func (i *Input) AmountInSatoshi() int64 {
+	return int64(i.Amount * 1e8)
+}
+
 type Utxo struct {
 	Inputs      []Input `json:"unspents"`
 	TotalAmount float64 `json:"total_amount"`
@@ -192,8 +196,6 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 		return fmt.Errorf("insufficient funds")
 	}
 
-	// utxo := u.Inputs[0]
-	// utxoAmountInSatoshi := int64(utxo.Amount * 1e8)
 	amountInSatoshi := int64(amount * 1e8)
 
 	tx := wire.NewMsgTx(wire.TxVersion)
@@ -201,20 +203,16 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	// create Input
 	var usedInputs []Input
 	totalAmount := int64(0)
-	pubKeyHash := btcutil.Hash160(getPrivKey(uint32(sender.Index)).PubKey().SerializeCompressed())
-	myScriptPubKey := txscript.NewScriptBuilder().
-		AddOp(txscript.OP_0).
-		AddData(pubKeyHash).
-		Script()
 
 	for _, v := range u.Inputs {
 		h, _ := chainhash.NewHashFromStr(v.Txid)
+		fmt.Println("ScriptPubKey: ", v.ScriptPubKey)
 		if totalAmount >= amountInSatoshi {
 			// Need to do change and
 			break
 		}
 		usedInputs = append(usedInputs, v)
-		totalAmount += int64(v.Amount)
+		totalAmount += int64(v.AmountInSatoshi())
 		op := wire.NewOutPoint(h, uint32(v.Vout))
 		inp := wire.NewTxIn(op, []byte{}, nil)
 		tx.AddTxIn(inp)
@@ -245,26 +243,31 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 
 	//create witness
 	for i, v := range usedInputs {
+
+		privKey := getPrivKey(uint32(sender.Index))
+
 		// create witness for this input
-		fet := txscript.NewCannedPrevOutputFetcher(myScriptPubKey, int64(v.Amount))
-		// fetcher := newPrevOutputFetcher(utxo.Txid, uint32(utxo.Vout), utxoAmountInSatoshi, myScriptPubKey)
+		scriptPubKeyBytes, _ := hex.DecodeString(v.ScriptPubKey)
+
+		fet := txscript.NewCannedPrevOutputFetcher(scriptPubKeyBytes, v.AmountInSatoshi())
 		txSig := txscript.NewTxSigHashes(tx, fet)
-		witness, err := txscript.WitnessSignature(tx, txSig, i, int64(v.Amount), myScriptPubKey, txscript.SigHashAll, getPrivKey(uint32(sender.Index)), true)
+		witness, err := txscript.WitnessSignature(tx, txSig, i, v.AmountInSatoshi(), scriptPubKeyBytes, txscript.SigHashAll, privKey, true)
 		if err != nil {
 			slog.Error("Error creating witness signature", "error", err)
 			return err
 		}
-		tx.TxIn[i].Witness = witness
-		engine, _ := txscript.NewEngine(myScriptPubKey, tx, v.Vout, txscript.StandardVerifyFlags, nil, nil, int64(v.Amount), fet)
 
+		tx.TxIn[i].Witness = witness
+		engine, err := txscript.NewEngine(scriptPubKeyBytes, tx, i, txscript.StandardVerifyFlags, nil, nil, v.AmountInSatoshi(), fet)
+		if err != nil {
+			slog.Error("Error Creating engine,", "Error", err)
+			return err
+		}
 		if err := engine.Execute(); err != nil {
 			slog.Error("Error executing transaction script", "error", err)
 			return err
 		}
 	}
-	// validate the trx
-	// fetcher := txscript.NewCannedPrevOutputFetcher(myScriptPubKey, int64(totalAmount))
-
 	buf := new(bytes.Buffer)
 	tx.Serialize(buf)
 	trxHex := hex.EncodeToString(buf.Bytes())
@@ -286,6 +289,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 }
 
 func getPrivKey(addressIndex uint32) *btcec.PrivateKey {
+	// private key for account id 17
 	keyStr := "tprv8fQcvSh37DJP7fxSKvJKyZHxCsVX5m9tGpcM21H3WuBYnQERJhU8bhPEzDtanzkaPA9han5cxMt6PXxbqkqRKUMvGnKceQYuFzfHru15667"
 	extKey, _ := hdkeychain.NewKeyFromString(keyStr)
 	changeKey, _ := extKey.Derive(0)
@@ -294,21 +298,3 @@ func getPrivKey(addressIndex uint32) *btcec.PrivateKey {
 	privKey, _ := childKey.ECPrivKey()
 	return privKey
 }
-
-// type prevOutputFetcher struct {
-// 	outputs map[wire.OutPoint]*wire.TxOut
-// }
-
-// func (f *prevOutputFetcher) FetchPrevOutput(op wire.OutPoint) *wire.TxOut {
-// 	return f.outputs[op]
-// }
-
-// func newPrevOutputFetcher(txid string, vout uint32, amount int64, scriptPubKey []byte) *prevOutputFetcher {
-// 	hash, _ := chainhash.NewHashFromStr(txid)
-// 	op := wire.OutPoint{Hash: *hash, Index: vout}
-// 	return &prevOutputFetcher{
-// 		outputs: map[wire.OutPoint]*wire.TxOut{
-// 			op: wire.NewTxOut(amount, scriptPubKey),
-// 		},
-// 	}
-// }

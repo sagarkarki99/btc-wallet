@@ -40,7 +40,7 @@ func RunApp() {
 	rand.Seed(time.Now().UnixNano())
 
 	// Generate random number between 0 and 99
-	num := strconv.Itoa(rand.Intn(100))
+	num := rand.Intn(100)
 	fmt.Println("Generating a new deposit address for user ID: ", num)
 	addr := ws.GetDepositAddress(num)
 	fmt.Println("Deposit Address: ", addr)
@@ -52,7 +52,7 @@ func RunApp() {
 			return
 		}
 		var req struct {
-			UserId string `json:"userId"`
+			UserId int `json:"userId"`
 		}
 		defer r.Body.Close()
 
@@ -79,7 +79,8 @@ func RunApp() {
 
 		params := r.URL.Query()
 		userId := params.Get("userId")
-		addr := ws.GetDepositAddress(userId)
+		uId, _ := strconv.ParseInt(userId, 8, 32)
+		addr := ws.GetDepositAddress(int(uId))
 		balance := ws.GetBalance(addr)
 		res := map[string]float64{
 			"balance": balance,
@@ -91,7 +92,7 @@ func RunApp() {
 	r.HandleFunc("/api/v1/wallet/send", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		var requestBody struct {
-			UserId        string  `json:"userId"`
+			UserId        int     `json:"userId"`
 			Amount        float64 `json:"amount"`
 			SenderAddress string  `json:"senderAddress"`
 		}
@@ -101,7 +102,7 @@ func RunApp() {
 			return
 		}
 
-		if requestBody.UserId == "" || requestBody.Amount <= 0 || requestBody.SenderAddress == "" {
+		if requestBody.UserId == 0 || requestBody.Amount <= 0 || requestBody.SenderAddress == "" {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
 			return
 		}
