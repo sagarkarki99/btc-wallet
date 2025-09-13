@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"math/rand"
 	"strconv"
-	"time"
 
 	"net/http"
 
@@ -35,15 +33,6 @@ func RunApp() {
 	fmt.Println("Welcome to your bitcoin wallet., ")
 	kc := keychain.NewKeychain()
 	ws := wallet.NewWalletService(kc)
-
-	// Seed the random number generator with current time
-	rand.Seed(time.Now().UnixNano())
-
-	// Generate random number between 0 and 99
-	num := rand.Intn(100)
-	fmt.Println("Generating a new deposit address for user ID: ", num)
-	addr := ws.GetDepositAddress(num)
-	fmt.Println("Deposit Address: ", addr)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/wallet/deposit", func(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +68,8 @@ func RunApp() {
 
 		params := r.URL.Query()
 		userId := params.Get("userId")
-		uId, _ := strconv.ParseInt(userId, 8, 32)
-		addr := ws.GetDepositAddress(int(uId))
-		balance := ws.GetBalance(addr)
+		uId, _ := strconv.ParseInt(userId, 10, 32)
+		balance := ws.GetBalance(int(uId))
 		res := map[string]float64{
 			"balance": balance,
 		}
