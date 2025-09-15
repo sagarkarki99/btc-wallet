@@ -39,7 +39,7 @@ type Utxo struct {
 
 type WalletService interface {
 	GetDepositAddress(userId int) string
-	GetBalance(addr string) float64
+	GetBalance(userId int) float64
 	SendToAddress(userId int, amount float64, destinationAddress string) error
 }
 
@@ -154,8 +154,12 @@ func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) ([]byt
 	return payloadBytes, err
 }
 
-func (ws *WalletServiceImpl) GetBalance(addr string) float64 {
-	utxo, err := ws.getUTXOs(addr)
+func (ws *WalletServiceImpl) GetBalance(userId int) float64 {
+	addr, err := ws.repo.GetAddress(userId)
+	if err != nil {
+		return 0
+	}
+	utxo, err := ws.getUTXOs(addr.Hash)
 	if err != nil {
 		fmt.Println("Error getting UTXOs: ", err)
 		return 0
