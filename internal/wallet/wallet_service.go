@@ -113,7 +113,7 @@ func generateAddress(xpub string, accountId, addressIndex int) *db.Address {
 		NextIndex: addressIndex + 1,
 		AccountId: accountId,
 	}
-	fmt.Printf("Address ( m/84h/1h/%dh/0/%d): %s", address.AccountId, address.Index, addr.EncodeAddress())
+	fmt.Printf("Address ( %d): %s", address.Index, addr.EncodeAddress())
 	fmt.Println("--------------------------------")
 	return address
 }
@@ -316,7 +316,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 }
 
 func getPrivKey(accountId, addressIndex uint32) *btcec.PrivateKey {
-	keyStr := "tprv8fQcvSh37DJP7fxSKvJKyZHxCsVX5m9tGpcM21H3WuBYnQERJhU8bhPEzDtanzkaPA9han5cxMt6PXxbqkqRKUMvGnKceQYuFzfHru15667"
+	keyStr := "tprv8fLoca4ervKAaWqHrZciVjwuARUMhmMKNCK5bWkgfHfbKPcNM3rcS5kmeC6yCBrmhb7pLHELkFG6VZUTw6PMNyY3HyqAXkTLHAC5fRNDEZf"
 	extKey, _ := hdkeychain.NewKeyFromString(keyStr)
 	changeKey, _ := extKey.Derive(0)
 

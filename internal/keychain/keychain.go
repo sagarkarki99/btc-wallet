@@ -55,7 +55,7 @@ func (kc *KeychainImpl) CreateAccount() (*AccountInfo, error) {
 	acc, _ := kc.kr.GetLatestAccountIndex()
 	var accountIndex int
 	if acc != nil {
-		accountIndex = +1
+		accountIndex = acc.AccountIndex + 1
 	}
 
 	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + uint32(accountIndex))

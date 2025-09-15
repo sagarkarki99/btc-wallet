@@ -31,9 +31,10 @@ type walletRepository struct {
 }
 
 func (d *walletRepository) GetWalletInfo(userId int) (*db.WalletInfo, error) {
+	//TODO: Join wallet and its latest address info
 	wallet := &db.WalletInfo{
 		Id:               1,
-		XpubKey:          "",
+		XpubKey:          "tpubDC2qkz6u1HzqTys5kDHJu9c1jSzHs6YDwVurt2nz5ZTz9ss8ySgCcaNdpLsLv7m8ugbjXAcvmF6sB1DcR26rYJqEnLuHTLeH3bTNoetTsy6",
 		NextAddressIndex: 1,
 		AccountId:        1,
 	}
