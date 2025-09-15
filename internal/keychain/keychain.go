@@ -19,7 +19,7 @@ var (
 )
 
 type Keychain interface {
-	GenerateAddress(accountId uint32) (*AddressInfo, error)
+	CreateAccount() (*AccountInfo, error)
 	SignTransaction() string
 }
 
@@ -33,7 +33,7 @@ func NewKeychain() Keychain {
 	}
 }
 
-func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) {
+func (kc *KeychainImpl) CreateAccount() (*AccountInfo, error) {
 	masterKey, _ := kc.getMasterKey()
 	mPubKey, _ := masterKey.Neuter() // Get the extended public key
 	fmt.Println("Master Key Public Key:", mPubKey.String())
@@ -43,15 +43,22 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 	purposeKey, _ := masterKey.Derive(hdkeychain.HardenedKeyStart + 84)
 	// Derive the coin type key for Bitcoin (0 for mainnet, 1 for testnet)
 	// TODO: Refactor the hard coded coin type to be dynamic
-	coinTypeKey, _ := purposeKey.Derive(hdkeychain.HardenedKeyStart + 0)
+	coinTypeKey, _ := purposeKey.Derive(hdkeychain.HardenedKeyStart + getCoinType())
 
 	// Path: m/84'/1'/0'
 	// This is the account level. You would use a new index for each account (0, 1, 2...).
 	// This is the extended private key you would store for the user.
 	// Derive the account key (0 for the first account)
 	// This should be incrmental.
+
 	//TODO: Refactor the hard coded account index to be dynamic
-	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + accountId)
+	acc, _ := kc.kr.GetLatestAccountIndex()
+	var accountIndex int
+	if acc != nil {
+		accountIndex = +1
+	}
+
+	accountKey, err := coinTypeKey.Derive(hdkeychain.HardenedKeyStart + uint32(accountIndex))
 	if err != nil {
 		return nil, ErrGeneratingKey
 	}
@@ -68,16 +75,26 @@ func (kc *KeychainImpl) GenerateAddress(accountId uint32) (*AddressInfo, error) 
 
 	fp := kc.getMasterkeyFingerprint(masterKey)
 
-	kc.kr.Save(&db.KeyAddress{
-		PrivateKey: accountKey.String(),
-		PublicKey:  xpub.String(),
+	id, _ := kc.kr.Save(&db.Account{
+		XprivKey:     accountKey.String(),
+		AccountIndex: accountIndex,
 	})
 
-	return &AddressInfo{
+	return &AccountInfo{
+		Id:          id,
+		index:       accountIndex,
 		Fingerprint: fp,
 		Xpub:        xpub.String(),
 	}, nil
 
+}
+
+func getCoinType() uint32 {
+	if blockchain.IsMainnetRunning() {
+		return 0
+	} else {
+		return 1
+	}
 }
 
 func (*KeychainImpl) getMasterkeyFingerprint(masterKey *hdkeychain.ExtendedKey) string {
@@ -130,7 +147,9 @@ func getSeed() []byte {
 
 }
 
-type AddressInfo struct {
+type AccountInfo struct {
+	Id          int
+	index       int
 	Fingerprint string
 	Xpub        string
 }

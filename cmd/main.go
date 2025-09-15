@@ -58,6 +58,22 @@ func RunApp() {
 		writeResponse(w, responseBytes, http.StatusOK)
 
 	})
+	r.HandleFunc("/api/v1/wallet/create", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		defer r.Body.Close()
+
+		addr := ws.CreateWallet()
+		response := map[string]string{
+			"address": addr,
+		}
+		responseBytes, _ := json.Marshal(response)
+		writeResponse(w, responseBytes, http.StatusOK)
+
+	})
 
 	r.HandleFunc("/api/v1/wallet/balance", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

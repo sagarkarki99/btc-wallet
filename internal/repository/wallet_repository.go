@@ -3,7 +3,6 @@ package repo
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sagarkarki99/db"
@@ -16,8 +15,8 @@ var (
 type WalletRepository interface {
 	SaveAddress(w db.Address) (string, error)
 	GetAddress(userId int) (*db.Address, error)
-	SaveAccount(w db.Account) (int, error)
-	GetAccount(userId int) (*db.Account, error)
+	GetWalletInfo(userId int) (*db.WalletInfo, error)
+	SaveWallet(xpub string, accountId int, fingerprint string) (int, error)
 }
 
 func New() WalletRepository {
@@ -31,24 +30,14 @@ type walletRepository struct {
 	db *sqlx.DB
 }
 
-func (db *walletRepository) SaveAccount(w db.Account) (int, error) {
-	var id int
-	err := db.db.QueryRow("INSERT INTO account (xpub,fingerprint) VALUES ($1,$2) RETURNING id", w.XpubKey, w.Fingerprint).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("error while saving Account: %w", err)
+func (d *walletRepository) GetWalletInfo(userId int) (*db.WalletInfo, error) {
+	wallet := &db.WalletInfo{
+		Id:               1,
+		XpubKey:          "",
+		NextAddressIndex: 1,
+		AccountId:        1,
 	}
-	return id, nil
-}
-
-func (d *walletRepository) GetAccount(userId int) (*db.Account, error) {
-	var w db.Account
-	err := db.DB.Get(&w, "SELECT * FROM account WHERE account.id = $1", userId)
-	if err != nil && strings.Contains(err.Error(), "sql: no rows in result set") {
-		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("error while getting account: %w", err)
-	}
-	return &w, nil
+	return wallet, nil
 }
 
 func (db *walletRepository) SaveAddress(w db.Address) (string, error) {
@@ -56,6 +45,15 @@ func (db *walletRepository) SaveAddress(w db.Address) (string, error) {
 	err := db.db.QueryRow("INSERT INTO address (addr_index, account_id, address_hash,next_index) VALUES ($1, $2,$3,$4) RETURNING id", w.Index, w.AccountId, w.Hash, w.NextIndex).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("error while saving address: %w", err)
+	}
+	return id, nil
+}
+
+func (db *walletRepository) SaveWallet(xpub string, accountId int, fingerprint string) (int, error) {
+	var id int
+	err := db.db.QueryRow("INSERT INTO wallet (xpub, accountid, fingerprint) VALUES ($1, $2, $3) RETURNING id", xpub, accountId, fingerprint).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("error while saving address: %w", err)
 	}
 	return id, nil
 }

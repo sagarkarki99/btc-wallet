@@ -20,14 +20,15 @@ type Address struct {
 }
 
 type Account struct {
-	Id          int       `db:"id"`
-	XpubKey     string    `db:"xpub"`
-	Fingerprint string    `db:"fingerprint"`
-	CreatedAt   time.Time `db:"created_at"`
+	Id           int       `db:"id"`
+	AccountIndex int       `db:"account_index"`
+	XprivKey     string    `db:"xpriv"`
+	CreatedAt    time.Time `db:"created_at"`
 }
 
-type KeyAddress struct {
-	Id         string `db:"id"`
-	PrivateKey string `db:"private_key"`
-	PublicKey  string `db:"public_key"`
+type WalletInfo struct {
+	Id               int
+	XpubKey          string
+	AccountId        int
+	NextAddressIndex int
 }

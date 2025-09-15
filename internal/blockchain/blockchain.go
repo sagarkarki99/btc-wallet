@@ -30,6 +30,14 @@ func GetNetworkParams() *chaincfg.Params {
 	return &chaincfg.RegressionNetParams
 }
 
+func IsMainnetRunning() bool {
+	if Network == Mainnet {
+		return true
+	} else {
+		return false
+	}
+}
+
 type RPCClientManager struct {
 	config *rpcclient.ConnConfig
 	Host   string
@@ -95,11 +103,11 @@ func Start(ctx context.Context) {
 }
 
 func QueryFromBytes(rpcMethod string, data []byte) (*json.RawMessage, error) {
-	jsonParam, err := json.Marshal(string(data))
-	if err != nil {
-		return nil, err
-	}
-	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, []json.RawMessage{jsonParam})
+	// jsonParam, err := json.Marshal(string(data))
+	// if err != nil {
+	// 	return nil, err
+	// }
+	res, err := rpcManager.GetClient(activeWallet).RawRequest(rpcMethod, []json.RawMessage{data})
 	json.NewEncoder(os.Stdout).Encode(res)
 	return &res, err
 }

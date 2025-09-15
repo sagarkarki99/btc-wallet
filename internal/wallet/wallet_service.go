@@ -38,6 +38,7 @@ type Utxo struct {
 }
 
 type WalletService interface {
+	CreateWallet() string
 	GetDepositAddress(userId int) string
 	GetBalance(userId int) float64
 	SendToAddress(userId int, amount float64, destinationAddress string) error
@@ -55,52 +56,39 @@ type WalletServiceImpl struct {
 	kc   keychain.Keychain
 }
 
+func (ws *WalletServiceImpl) CreateWallet() string {
+	ai, err := ws.kc.CreateAccount()
+	if err != nil {
+		return ""
+	}
+
+	payload, _ := ws.getDescriptorPayload(ai.Fingerprint, ai.Xpub)
+
+	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
+	if e != nil {
+		slog.Error("Error importing address", "error", e)
+	}
+
+	addr := generateAddress(ai.Xpub, ai.Id, 0)
+	ws.repo.SaveWallet(ai.Xpub, ai.Id, ai.Fingerprint)
+	ws.repo.SaveAddress(*addr)
+	return addr.Hash
+}
+
 func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
-	var address *db.Address
-	var account *db.Account
-	account, _ = ws.repo.GetAccount(userId)
-	if account == nil {
-		ai, err := ws.kc.GenerateAddress(uint32(userId))
-		if err != nil {
-			return ""
-		}
-
-		a := &db.Account{
-			XpubKey:     ai.Xpub,
-			Fingerprint: ai.Fingerprint,
-		}
-
-		id, err := ws.repo.SaveAccount(*a)
-		if err != nil {
-			return ""
-		}
-		account = a
-		account.Id = id
-
-		address = &db.Address{
-			Index:     0,
-			NextIndex: 1,
-			AccountId: account.Id,
-		}
-
-		payload, _ := ws.getDescriptorPayload(account.Fingerprint, account.XpubKey)
-
-		_, e := blockchain.QueryFromBytes("importdescriptors", payload)
-		if e != nil {
-			slog.Error("Error importing address", "error", e)
-		}
+	wallet, _ := ws.repo.GetWalletInfo(userId)
+	if wallet == nil {
+		return ""
 	}
 
-	if address == nil {
-		add, _ := ws.repo.GetAddress(account.Id)
-		address = &db.Address{
-			Index:     add.NextIndex,
-			NextIndex: add.NextIndex + 1,
-			AccountId: add.AccountId,
-		}
-	}
+	address := generateAddress(wallet.XpubKey, wallet.AccountId, wallet.NextAddressIndex)
+	ws.repo.SaveAddress(*address)
 
-	extKey, _ := hdkeychain.NewKeyFromString(account.XpubKey)
+	return address.Hash
+}
+
+func generateAddress(xpub string, accountId, addressIndex int) *db.Address {
+	extKey, _ := hdkeychain.NewKeyFromString(xpub)
 
 	// We received m/84h/0h/0h from addressInfo.
 	// Adding change type (0 for external, 1 for internal)
@@ -111,7 +99,7 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
 	//Path: m/84h/0h/0h/0/0
 
 	// we need to import m/84h/0h/0h/xpub/0/* to the node.
-	childKey, err := changeKey.Derive(uint32(address.Index))
+	childKey, err := changeKey.Derive(uint32(addressIndex))
 	if err != nil {
 		slog.Error("Error deriving child key", "error", err)
 	}
@@ -119,13 +107,15 @@ func (ws *WalletServiceImpl) GetDepositAddress(userId int) string {
 	childPub, _ := childKey.ECPubKey()
 
 	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), blockchain.GetNetworkParams())
+	address := &db.Address{
+		Hash:      addr.EncodeAddress(),
+		Index:     addressIndex,
+		NextIndex: addressIndex + 1,
+		AccountId: accountId,
+	}
 	fmt.Printf("Address ( m/84h/1h/%dh/0/%d): %s", address.AccountId, address.Index, addr.EncodeAddress())
 	fmt.Println("--------------------------------")
-	address.Hash = addr.EncodeAddress()
-
-	ws.repo.SaveAddress(*address)
-
-	return address.Hash
+	return address
 }
 
 func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) ([]byte, error) {
@@ -248,10 +238,43 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	//create witness
 	for i, v := range usedInputs {
 
-		privKey := getPrivKey(uint32(sender.Index))
+		privKey := getPrivKey(uint32(sender.AccountId), uint32(sender.Index))
 
 		// create witness for this input
 		scriptPubKeyBytes, _ := hex.DecodeString(v.ScriptPubKey)
+
+		// =================================================================
+		// START: DIAGNOSTIC BLOCK
+		// =================================================================
+		fmt.Printf("\n--- [DEBUGGING INPUT %d] ---\n", i)
+		fmt.Printf("UTXO Txid: %s:%d\n", v.Txid, v.Vout)
+
+		// Step 1: Derive the Public Key Hash from YOUR private key.
+		// We assume compressed, as this is the standard for SegWit.
+		myPublicKey := privKey.PubKey().SerializeCompressed()
+		myPubKeyHash := btcutil.Hash160(myPublicKey)
+		fmt.Printf("Hash derived from YOUR private key: %x\n", myPubKeyHash)
+
+		// Step 2: Extract the required Public Key Hash from the UTXO's script.
+		// A P2WPKH scriptPubKey is 0x0014{20-byte-hash}. The first two bytes are the witness version and push opcode.
+		if len(scriptPubKeyBytes) != 22 || scriptPubKeyBytes[0] != 0x00 || scriptPubKeyBytes[1] != 0x14 {
+			slog.Error("This does not appear to be a standard P2WPKH scriptPubKey!", "script", v.ScriptPubKey)
+			return errors.New("invalid scriptpubkey format for P2WPKH")
+		}
+		requiredPubKeyHash := scriptPubKeyBytes[2:]
+		fmt.Printf("Hash required by the UTXO script:   %x\n", requiredPubKeyHash)
+
+		// Step 3: Compare them. This is the check that OP_EQUALVERIFY performs.
+		if !bytes.Equal(myPubKeyHash, requiredPubKeyHash) {
+			slog.Error("!!! KEY MISMATCH !!! The private key you are using does not correspond to the UTXO being spent.")
+			fmt.Println("This is why OP_EQUALVERIFY is failing.")
+			return errors.New("key mismatch: provided private key cannot spend this UTXO")
+		} else {
+			fmt.Println("✅ Key/Hash Match Confirmed. The private key is correct for this UTXO.")
+		}
+		// =================================================================
+		// END: DIAGNOSTIC BLOCK
+		// =================================================================
 
 		fet := txscript.NewCannedPrevOutputFetcher(scriptPubKeyBytes, v.AmountInSatoshi())
 		txSig := txscript.NewTxSigHashes(tx, fet)
@@ -292,13 +315,18 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 	return nil
 }
 
-func getPrivKey(addressIndex uint32) *btcec.PrivateKey {
-	// private key for account id 17
+func getPrivKey(accountId, addressIndex uint32) *btcec.PrivateKey {
 	keyStr := "tprv8fQcvSh37DJP7fxSKvJKyZHxCsVX5m9tGpcM21H3WuBYnQERJhU8bhPEzDtanzkaPA9han5cxMt6PXxbqkqRKUMvGnKceQYuFzfHru15667"
 	extKey, _ := hdkeychain.NewKeyFromString(keyStr)
 	changeKey, _ := extKey.Derive(0)
 
 	childKey, _ := changeKey.Derive((addressIndex))
 	privKey, _ := childKey.ECPrivKey()
+	childPub, _ := childKey.ECPubKey()
+
+	addr, _ := btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(childPub.SerializeCompressed()), blockchain.GetNetworkParams())
+	fmt.Printf("Address ( m/84h/1h/%dh/0/%d): %s", accountId, addressIndex, addr.EncodeAddress())
+	fmt.Println("--------------------------------")
+
 	return privKey
 }
