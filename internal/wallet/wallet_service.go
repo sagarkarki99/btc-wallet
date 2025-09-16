@@ -64,7 +64,7 @@ func (ws *WalletServiceImpl) CreateWallet() string {
 
 	payload, _ := ws.getDescriptorPayload(ai.Fingerprint, ai.Xpub)
 
-	_, e := blockchain.QueryFromBytes("importdescriptors", payload)
+	_, e := blockchain.Query("importdescriptors", []interface{}{payload})
 	if e != nil {
 		slog.Error("Error importing address", "error", e)
 	}
@@ -118,7 +118,7 @@ func generateAddress(xpub string, accountId, addressIndex int) *db.Address {
 	return address
 }
 
-func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) ([]byte, error) {
+func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) (interface{}, error) {
 
 	p := fmt.Sprintf("wpkh([%s/84h/1h/0h]%s/0/*)", fp, xpub)
 	data, err := blockchain.Query("getdescriptorinfo", []interface{}{p})
@@ -136,12 +136,7 @@ func (ws *WalletServiceImpl) getDescriptorPayload(fp string, xpub string) ([]byt
 		"watchonly": true,
 		"range":     []int{0, 1000},
 	}
-	payloadBytes, err := json.Marshal([]interface{}{payload})
-	if err != nil {
-		slog.Error("Error marshaling payloads", "error", err.Error())
-		return nil, err
-	}
-	return payloadBytes, err
+	return []interface{}{payload}, err
 }
 
 func (ws *WalletServiceImpl) GetBalance(userId int) float64 {
@@ -303,7 +298,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 
 	// send the transaction
 	fmt.Println("Sending transaction...")
-	msg, err := blockchain.QueryFromBytes("sendrawtransaction", []byte(trxHex))
+	msg, err := blockchain.Query("sendrawtransaction", []interface{}{trxHex})
 	if err != nil {
 		slog.Error("Error sending raw transaction", "error", err)
 		return err
@@ -316,7 +311,7 @@ func (ws *WalletServiceImpl) SendToAddress(userId int, amount float64, destinati
 }
 
 func getPrivKey(accountId, addressIndex uint32) *btcec.PrivateKey {
-	keyStr := "tprv8fLoca4ervKAaWqHrZciVjwuARUMhmMKNCK5bWkgfHfbKPcNM3rcS5kmeC6yCBrmhb7pLHELkFG6VZUTw6PMNyY3HyqAXkTLHAC5fRNDEZf"
+	keyStr := "tprv8fLoca4ervKAYJ9f5b2jGTyZa2Sqj81VBjJXBx9XSQKUkThCYdcRGwqTNAt5eQeADPmPQwvB2K3CJeCutWaKKJFCtQUzQL6y5fVf2TTUdem"
 	extKey, _ := hdkeychain.NewKeyFromString(keyStr)
 	changeKey, _ := extKey.Derive(0)
 
