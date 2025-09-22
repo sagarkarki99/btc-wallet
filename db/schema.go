@@ -27,8 +27,8 @@ type Account struct {
 }
 
 type WalletInfo struct {
-	Id               int
-	XpubKey          string
-	AccountId        int
-	NextAddressIndex int
+	Id               int    `db:"id"`
+	XpubKey          string `db:"xpub"`
+	AccountId        int    `db:"accountid"`
+	NextAddressIndex int    `db:"next_index"`
 }

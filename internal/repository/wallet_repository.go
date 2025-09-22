@@ -30,15 +30,19 @@ type walletRepository struct {
 	db *sqlx.DB
 }
 
-func (d *walletRepository) GetWalletInfo(userId int) (*db.WalletInfo, error) {
-	//TODO: Join wallet and its latest address info
-	wallet := &db.WalletInfo{
-		Id:               1,
-		XpubKey:          "tpubDC2qkz6u1HzqTys5kDHJu9c1jSzHs6YDwVurt2nz5ZTz9ss8ySgCcaNdpLsLv7m8ugbjXAcvmF6sB1DcR26rYJqEnLuHTLeH3bTNoetTsy6",
-		NextAddressIndex: 1,
-		AccountId:        1,
+func (r *walletRepository) GetWalletInfo(userId int) (*db.WalletInfo, error) {
+	const q = `
+			SELECT wallet.id, wallet.xpub, wallet.accountid, address.next_index
+			FROM wallet
+			JOIN address ON wallet.accountid = address.account_id
+			WHERE wallet.accountid = $1
+			ORDER BY address.next_index DESC
+			LIMIT 1`
+	var wi db.WalletInfo
+	if err := r.db.Get(&wi, q, userId); err != nil {
+		return nil, fmt.Errorf("get wallet info: %w", err)
 	}
-	return wallet, nil
+	return &wi, nil
 }
 
 func (db *walletRepository) SaveAddress(w db.Address) (string, error) {
