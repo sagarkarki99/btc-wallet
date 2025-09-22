@@ -31,13 +31,7 @@ type walletRepository struct {
 }
 
 func (r *walletRepository) GetWalletInfo(userId int) (*db.WalletInfo, error) {
-	const q = `
-			SELECT wallet.id, wallet.xpub, wallet.accountid, address.next_index
-			FROM wallet
-			JOIN address ON wallet.accountid = address.account_id
-			WHERE wallet.accountid = $1
-			ORDER BY address.next_index DESC
-			LIMIT 1`
+	q := `SELECT * FROM get_wallet_info($1)`
 	var wi db.WalletInfo
 	if err := r.db.Get(&wi, q, userId); err != nil {
 		return nil, fmt.Errorf("get wallet info: %w", err)
